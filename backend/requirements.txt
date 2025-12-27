@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pydantic
+onvif-zeep
+requests
+zeroconf
+netifaces
+python-dotenv
+opencv-python
+ndi-python

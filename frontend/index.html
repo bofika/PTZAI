@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IntelliTrack-Local</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <header>
+        <h1>IntelliTrack-Local (MVP)</h1>
+        <button id="add-camera-btn" class="primary">Add Camera</button>
+    </header>
+
+    <div class="layout-container">
+        <main>
+            <div id="video-grid">
+                <!-- Video Cells injected here -->
+                <div class="empty-state">No Cameras Configured</div>
+            </div>
+        </main>
+
+        <aside>
+            <h2 id="selected-cam-name">Select a Camera</h2>
+
+            <div id="ptz-controls" style="opacity: 0.5; pointer-events: none;">
+                <!-- D-Pad -->
+                <div class="d-pad">
+                    <div></div>
+                    <button class="ptz-btn" data-action="move" data-pan="0" data-tilt="1">▲</button>
+                    <div></div>
+                    <button class="ptz-btn" data-action="move" data-pan="-1" data-tilt="0">◀</button>
+                    <button class="ptz-btn stop" data-action="stop">■</button>
+                    <button class="ptz-btn" data-action="move" data-pan="1" data-tilt="0">▶</button>
+                    <div></div>
+                    <button class="ptz-btn" data-action="move" data-pan="0" data-tilt="-1">▼</button>
+                    <div></div>
+                </div>
+
+                <!-- Zoom -->
+                <section>
+                    <label>Zoom</label>
+                    <div class="zoom-controls">
+                        <button class="ptz-zoom-btn" data-zoom="-1">Out</button>
+                        <button class="ptz-zoom-btn" data-zoom="1">In</button>
+                    </div>
+                </section>
+
+                <!-- Speed -->
+                <section>
+                    <label>Speed: <span id="speed-val">0.5</span></label>
+                    <input type="range" id="speed-slider" min="0.1" max="1" step="0.1" value="0.5">
+                </section>
+
+                <!-- Presets -->
+                <section>
+                    <label>Presets</label>
+                    <select id="preset-select">
+                        <option>Select Preset...</option>
+                    </select>
+                    <div class="preset-controls">
+                        <button id="goto-preset-btn" style="background:#059669; color:white">Go</button>
+                        <button id="set-preset-btn" style="background:#d97706; color:white">Set</button>
+                    </div>
+                </section>
+            </div>
+
+            <div id="cam-status" style="margin-top:auto">
+                Status: <span id="status-text">Ready</span>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Modal -->
+    <div id="add-camera-modal" class="modal-overlay">
+        <div class="modal">
+            <h2>Add Camera</h2>
+            <form id="add-camera-form">
+                <div class="form-group"><input type="text" name="name" placeholder="Camera Name" required></div>
+                <div class="form-group"><input type="text" name="ip" placeholder="IP Address" required></div>
+                <div class="form-group"><input type="number" name="onvif_port" placeholder="ONVIF Port (80)" value="80"
+                        required></div>
+                <div class="form-group"><input type="text" name="username" placeholder="Username" required></div>
+                <div class="form-group"><input type="password" name="password" placeholder="Password" required></div>
+                <div class="form-group"><input type="text" name="rtsp_url" placeholder="RTSP URL (rtsp://...)" required>
+                </div>
+                <div class="form-group"><input type="hidden" name="id" value=""></div>
+
+                <div class="modal-actions">
+                    <button type="button" id="cancel-add-btn">Cancel</button>
+                    <button type="submit" class="primary">Add</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="lib/hls.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>

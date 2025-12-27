@@ -1,0 +1,132 @@
+Metadata-Version: 2.1
+Name: ndi-python
+Version: 5.1.1.5
+Summary: Wrapper package for NDI SDK python bindings.
+Home-page: https://github.com/buresu/ndi-python
+Author: Naoto Kondo <cgigcp3yqt@gmail.com>
+License: MIT
+Keywords: NDI,NewTek,Video Production
+Platform: UNKNOWN
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: MacOS
+Classifier: Operating System :: Microsoft :: Windows
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Programming Language :: C++
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Classifier: Topic :: Software Development
+Classifier: Topic :: Software Development :: Libraries
+Classifier: Topic :: Multimedia
+Classifier: Topic :: Multimedia :: Graphics
+Classifier: Topic :: Multimedia :: Sound/Audio
+Classifier: Topic :: Multimedia :: Video
+Classifier: Topic :: System :: Networking
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: numpy
+
+# ndi-python
+NewTek NDI Python wrapper
+
+## Installation
+ndi-python is support pypi package now. https://pypi.org/project/ndi-python/  
+So you can install it using pip if it is a supported environment.  
+```
+pip install ndi-python
+```
+The supported environment is as follows.  
+- Windows x64 Python(3.7-3.10)
+- macOS x64 >=10.12 Python(3.7-3.10)
+- Linux x64,aarch64 Python(3.7-3.10)
+
+## Setup Avahi
+Linux requires Avahi to search for NDI sources.  
+Please install according to your environment.  
+
+### Ubuntu
+```
+sudo apt install avahi-daemon
+sudo systemctl enable --now avahi-daemon
+```
+
+### Arch Linux
+```
+sudo pacman -S avahi
+sudo systemctl enable --now avahi-daemon
+```
+
+## Run examples
+I've ported some examples to python.  
+You can try it by running the ndi-python examples.  
+```
+git clone --recursive https://github.com/buresu/ndi-python.git
+cd ndi-python/example
+pip install -r requirements.txt
+python find.py
+```
+
+## Development
+
+### Install NDI SDK
+NDI SDK is required for development.  
+You should install according to your environment.  
+
+### Windows, Mac, Ubuntu
+Donwload and install NDI SDK.  
+https://ndi.tv/sdk/
+
+### Arch Linux
+```
+yay -S ndi-sdk
+```
+
+## Build
+### Build with setup.py
+```
+git clone --recursive https://github.com/buresu/ndi-python.git
+cd ndi-python
+python setup.py build
+```
+For ubuntu you need to set the SDK directory in NDI_SDK_DIR as cmake options.  
+```
+env CMAKE_ARGS="-DNDI_SDK_DIR=/path/to/ndisdk" python setup.py build
+```
+You can also specify the python version.  
+```
+env CMAKE_ARGS="-DNDI_SDK_DIR=/path/to/ndisdk -DPYTHON_EXECUTABLE=/path/to/python3.8 -DPYBIND11_PYTHON_VERSION=3.8" /path/to/python3.8 setup.py build
+```
+
+### Build for Python package
+```
+python setup.py bdist_wheel
+```
+
+### Build only CMake
+```
+git clone --recursive https://github.com/buresu/ndi-python.git
+cd /path/to/build
+cmake /path/to/project
+cmake --build /path/to/build --config Release
+```
+
+For ubuntu you need to set the SDK directory in NDI_SDK_DIR.  
+And build as follows.  
+```
+cmake /path/to/project -DNDI_SDK_DIR=/path/to/ndisdk
+cmake --build /path/to/build --config Release
+```
+After build copy ndi-python binary and NDI binary to execute directory.  
+
+## License
+ndi-python is MIT License  
+NDI follows NDI's license
+
+
