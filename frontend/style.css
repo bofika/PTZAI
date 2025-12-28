@@ -300,3 +300,64 @@ select {
     justify-content: flex-end;
     gap: 0.5rem;
 }
+
+/* Status Badges */
+.status-badges {
+    pointer-events: none;
+}
+
+/* Logs Drawer */
+#logs-drawer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 200px;
+    background: #1f2937;
+    border-top: 1px solid #374151;
+    z-index: 40;
+    display: none;
+    flex-direction: column;
+}
+
+#logs-drawer.open {
+    display: flex;
+}
+
+.logs-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 1rem;
+    background: #111827;
+    border-bottom: 1px solid #374151;
+}
+
+.logs-content {
+    flex: 1;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 0.85rem;
+    padding: 0.5rem;
+}
+
+.log-entry {
+    margin-bottom: 2px;
+    color: #d1d5db;
+}
+
+.log-entry.error {
+    color: #ef4444;
+}
+
+.log-entry.warn {
+    color: #f59e0b;
+}
+
+.log-entry.info {
+    color: #3b82f6;
+}
+
+.log-ts {
+    color: #6b7280;
+    margin-right: 8px;
+}

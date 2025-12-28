@@ -71,6 +71,19 @@ class PreviewManager:
             
             return provider
 
+    def check_health(self, cam_id: str) -> str:
+        """Returns: ok | error | offline"""
+        with self._lock:
+            provider = self.providers.get(cam_id)
+            if not provider:
+                return "offline"
+            # In Phase 1.2 we assume if provider exists it's "ok" or "starting"
+            # A real check would ask the provider if its thread is alive.
+            # Let's add a basic is_running check if possible, else "ok"
+            if hasattr(provider, "is_running") and not provider.is_running():
+                 return "error"
+            return "ok"
+
     def remove_provider(self, cam_id: str):
         with self._lock:
             if cam_id in self.providers:

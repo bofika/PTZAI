@@ -24,32 +24,70 @@ def get_ndi_sources():
     """List available NDI sources."""
     return preview_manager.scan_ndi_sources()
 
+from ..logger import logger
+
+@router.get("/logs")
+def get_system_logs(limit: int = 50, camera_id: Optional[str] = None):
+    return logger.get_logs(limit, camera_id)
+
 @router.get("/cameras")
 def get_cameras():
-    # Return list of video sources + capabilities
     cams = camera_manager.config_manager.get_cameras()
     result = []
     for c in cams:
-        # Preview Provider
-        preview = preview_manager.get_provider(c["id"])
-        c_out = c.copy()
-        if preview:
-             c_out["stream_url"] = preview.get_stream_url()
-        else:
-             c_out["stream_url"] = "" # Offline
+        cam_id = c["id"]
         
-        # Security: Remove password
-        if "password" in c_out:
-            del c_out["password"]
-            
-        # PTZ Capabilities
-        ptz_provider = camera_manager.get_camera(c["id"])
+        # 1. Preview Status
+        preview_status = preview_manager.check_health(cam_id)
+        preview = preview_manager.get_provider(cam_id)
+        stream_url = preview.get_stream_url() if preview else ""
+        
+        # 2. Control Status
+        # Simple check: if we have a provider instance, we assume it *was* connected.
+        # Ideally OnvifProvider would have a .connected bool.
+        ptz_provider = camera_manager.get_camera(cam_id)
+        control_status = "ok" if ptz_provider else "offline" 
+        
+        # 3. Capabilities
+        caps = {}
         if ptz_provider and hasattr(ptz_provider, "get_capabilities"):
-            c_out["capabilities"] = ptz_provider.get_capabilities()
+            caps = ptz_provider.get_capabilities()
+            
+        # 4. Active Source Name
+        # Hide credentials in RTSP
+        active_source = "Unknown"
+        p_cfg = c.get("preview", {})
+        if p_cfg.get("type") == "ndi":
+            active_source = p_cfg.get("ndi_source", "None")
         else:
-            c_out["capabilities"] = {}
+            rtsp = p_cfg.get("rtsp_url", "")
+            if "@" in rtsp:
+                # crude sanitize: rtsp://user:pass@ip... -> rtsp://*****@ip...
+                try:
+                    parts = rtsp.split("@")
+                    active_source = "rtsp://*****@" + parts[1]
+                except:
+                    active_source = "rtsp://sanitized"
+            else:
+                active_source = rtsp
 
-        result.append(c_out)
+        # Build Object
+        # Strip password first
+        c_safe = c.copy()
+        if "password" in c_safe:
+            del c_safe["password"]
+        
+        c_safe.update({
+            "control_status": control_status,
+            "preview_status": preview_status,
+            "stream_url": stream_url,
+            "capabilities": caps,
+            "active_preview_source": active_source,
+            "last_error": None, # Todo: track errors
+            "preview_type": p_cfg.get("type", "rtsp")
+        })
+        
+        result.append(c_safe)
     return result
 
 @router.post("/cameras")
@@ -58,12 +96,16 @@ def add_camera(config: CameraConfig):
     camera_manager.add_camera(new_cam)
     # Start preview provider
     preview_manager.create_provider(new_cam)
+    
+    logger.log("INFO", f"Camera added: {new_cam['name']}", new_cam["id"])
     return {"status": "added", "id": new_cam["id"]}
 
 @router.delete("/cameras/{cam_id}")
 def delete_camera(cam_id: str):
     preview_manager.remove_provider(cam_id)
     camera_manager.remove_camera(cam_id)
+    
+    logger.log("INFO", "Camera deleted", cam_id)
     return {"status": "removed"}
 
 @router.put("/cameras/{cam_id}")
@@ -112,6 +154,18 @@ def get_presets(cam_id: str):
     if not provider:
         raise HTTPException(status_code=404, detail="Camera not found")
     return provider.get_presets()
+
+@router.post("/cameras/{cam_id}/presets/refresh")
+def refresh_presets(cam_id: str):
+    provider = camera_manager.get_camera(cam_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Camera not found")
+        
+    if hasattr(provider, 'force_refresh_presets'):
+        return provider.force_refresh_presets()
+    else:
+        # Fallback if provider doesn't support forcing
+        return provider.get_presets()
 
 @router.post("/cameras/{cam_id}/presets/{preset_id}/goto")
 def goto_preset(cam_id: str, preset_id: str):
