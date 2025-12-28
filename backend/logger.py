@@ -14,16 +14,18 @@ class SystemLogger:
             cls._instance.max_logs = 200
         return cls._instance
 
-    def log(self, level: str, message: str, camera_id: Optional[str] = None):
+    def log(self, level: str, message: str, camera_id: Optional[str] = None, event_type: str = "system"):
         """
         Add a log entry.
         Level: INFO, WARN, ERROR
+        Event Type: camera.*, preview.*, control.*, etc.
         """
         entry = {
             "ts": datetime.now().isoformat(),
             "level": level.upper(),
             "message": message,
-            "camera_id": camera_id
+            "camera_id": camera_id,
+            "event_type": event_type
         }
         
         with self._lock:

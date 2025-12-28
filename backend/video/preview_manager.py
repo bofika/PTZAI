@@ -14,94 +14,150 @@ class PreviewManager:
         if cls._instance is None:
             cls._instance = super(PreviewManager, cls).__new__(cls)
             cls._instance.providers: Dict[str, PreviewProvider] = {}
+            cls._instance.states: Dict[str, Dict] = {} # cam_id -> {status, last_seen, last_error}
             cls._instance.discovery = NDIDiscovery()
         return cls._instance
+
+    def _init_state(self, cam_id):
+        if cam_id not in self.states:
+            self.states[cam_id] = {
+                "status": "offline",
+                "last_seen": None,
+                "last_error": None
+            }
+
+    def update_state(self, cam_id, status=None, error=None, activity=False):
+        """
+        Thread-safe state update.
+        activity=True updates last_seen to now.
+        status: starting | ok | restarting | offline | error
+        """
+        from datetime import datetime
+        with self._lock:
+            if cam_id not in self.states:
+                self._init_state(cam_id)
+            
+            s = self.states[cam_id]
+            if status:
+                s["status"] = status
+            if error:
+                s["last_error"] = error
+            if activity:
+                s["last_seen"] = datetime.now().isoformat()
+                # If we see activity, implied status is OK if distinct from starting
+                if s["status"] not in ["starting", "restarting"]:
+                     s["status"] = "ok"
+
+    def get_state(self, cam_id):
+         with self._lock:
+             return self.states.get(cam_id, {
+                "status": "offline",
+                "last_seen": None,
+                "last_error": None
+             }).copy()
 
     def get_provider(self, cam_id: str) -> Optional[PreviewProvider]:
         with self._lock:
             return self.providers.get(cam_id)
 
     def create_provider(self, config: Dict) -> Optional[PreviewProvider]:
-        """
-        Creates a provider based on the 'preview' config block.
-        Expected Config: 
-        {
-          "id": "...",
-          "preview": { 
-             "type": "ndi"|"rtsp", 
-             "ndi_source": "...", 
-             "rtsp_url": "..." 
-          }
-        }
-        """
         cam_id = config.get("id")
         preview_cfg = config.get("preview", {})
         p_type = preview_cfg.get("type", "rtsp")
         
+        self.update_state(cam_id, status="starting")
+        
         with self._lock:
             # Stop existing - CLEANUP
             if cam_id in self.providers:
-                print(f"Stopping existing preview for {cam_id}")
+                # ... existing logic ...
+                # Simplified for patch: just call internal logic or replicate
                 try:
                     self.providers[cam_id].stop()
-                except Exception as e:
-                    print(f"Error stopping provider {cam_id}: {e}")
+                except Exception: pass
                 del self.providers[cam_id]
 
             provider = None
-            print(f"Creating {p_type} provider for {cam_id}")
-            if p_type == "ndi":
-                source_name = preview_cfg.get("ndi_source")
-                if source_name:
-                    provider = NDIProvider(source_name, cam_id)
-            else:
-                url = preview_cfg.get("rtsp_url")
-                if url:
-                    provider = RTSPProvider(url, cam_id)
-            
-            if provider:
-                self.providers[cam_id] = provider
-                # Start outside lock? No, keep it safe.
-                try:
-                    provider.start()
-                except Exception as e:
-                    print(f"Error starting provider {cam_id}: {e}")
-                    # Don't store broken provider
-                    return None
+            # ... creation logic ...
+            try:
+                if p_type == "ndi":
+                    source_name = preview_cfg.get("ndi_source")
+                    if source_name:
+                        provider = NDIProvider(source_name, cam_id)
+                else:
+                    url = preview_cfg.get("rtsp_url")
+                    if url:
+                        provider = RTSPProvider(url, cam_id)
+                
+                if provider:
+                    self.providers[cam_id] = provider
+                    
+                    # Start in background to avoid blocking startup
+                    import threading
+                    def _start_bg():
+                        try:
+                            provider.start()
+                            self.update_state(cam_id, status="ok") 
+                        except Exception as e:
+                            print(f"Error starting provider {cam_id}: {e}")
+                            self.update_state(cam_id, status="error", error=str(e))
+                    
+                    threading.Thread(target=_start_bg, daemon=True).start()
+
+            except Exception as e:
+                self.update_state(cam_id, status="error", error=str(e))
+                return None
             
             return provider
 
     def check_health(self, cam_id: str) -> str:
-        """Returns: ok | error | offline"""
-        with self._lock:
-            provider = self.providers.get(cam_id)
-            if not provider:
-                return "offline"
-            # In Phase 1.2 we assume if provider exists it's "ok" or "starting"
-            # A real check would ask the provider if its thread is alive.
-            # Let's add a basic is_running check if possible, else "ok"
-            if hasattr(provider, "is_running") and not provider.is_running():
-                 return "error"
-            return "ok"
+        """Returns: ok | error | offline | starting | restarting"""
+        s = self.get_state(cam_id)
+        # Check timeout? If last_seen is too old (>10s) and status is OK, might be bad.
+        # For now, just return explicit status.
+        return s["status"]
 
-    def remove_provider(self, cam_id: str):
+    def restart_provider(self, cam_id: str, new_config: Dict = None) -> bool:
+        from ..logger import logger
+        self.update_state(cam_id, status="restarting")
+        
         with self._lock:
             if cam_id in self.providers:
                 try:
                     self.providers[cam_id].stop()
+                    logger.log("INFO", "Preview stopped for restart", cam_id, "preview.restart")
                 except Exception as e:
-                    print(f"Error stopping provider {cam_id}: {e}")
+                    logger.log("ERROR", f"Error stopping for restart: {e}", cam_id, "preview.error")
+                del self.providers[cam_id]
+        
+        # Create new
+        if new_config:
+            self.create_provider(new_config)
+            logger.log("INFO", "Preview restarted", cam_id, "preview.restart")
+            return True
+        
+        self.update_state(cam_id, status="error", error="Restart failed (no config)")
+        return False
+
+    def remove_provider(self, cam_id: str):
+        self.update_state(cam_id, status="offline")
+        with self._lock:
+            if cam_id in self.providers:
+                try:
+                    self.providers[cam_id].stop()
+                except Exception: pass
                 del self.providers[cam_id]
 
     def stop_all(self):
         with self._lock:
             print("Stopping all preview providers...")
             for pid, p in self.providers.items():
-                try:
-                    p.stop()
-                except Exception as e:
-                     print(f"Error stopping {pid}: {e}")
+                try: p.stop()
+                except: pass
             self.providers.clear()
+            self.states.clear() # Reset states? Or mark offline?
+            # Mark offline
+            # self.states = {} # Simple clear for shutdown
 
     def scan_ndi_sources(self):
         return self.discovery.scan()

@@ -51,6 +51,18 @@ A local-only Multi-Camera PTZ Control & Monitoring Web App.
   - NDI: Check if camera is sending.
   - RTSP: Check FFmpeg installation.
 
+### Soak Test Checklist (Release Readiness)
+Before each event, perform this 15-minute check:
+1. **Startup**: Launch backend. Verify correct camera count and "System: OK" in header.
+2. **Preview**: Verify all live tiles are Green (Preview OK).
+3. **PTZ**: Select each camera, move with arrows + Stop (Space). Ensure smooth control.
+4. **Restart**: Open a camera's edit panel, click "Restart Preview". Verify it cycles Blue -> Green within 5s.
+5. **Logs**: Open Logs drawer. Confirm "Preview restarted" event appears and no error floods.
+6. **Persistence**: Reload the browser page. Ensure layout and status recover instantly.
+
+### Version
+**Current**: v0.1.0-phase1-stable
+
 ## 🔮 Phase 2 / Developer
 - New `VideoSource` abstraction allows accessing raw frames:
   - `source.get_frame()` returns numpy array (BGR).

@@ -53,10 +53,20 @@ def video_mjpeg(cam_id: str):
     if not provider or not hasattr(provider, 'generate_mjpeg'):
          return {"error": "Source not found or not MJPEG compatible"}, 404
     
-    return StreamingResponse(provider.generate_mjpeg(), media_type="multipart/x-mixed-replace; boundary=frame")
+    def frame_wrapper():
+        # Pass through frames and update activity
+        for chunk in provider.generate_mjpeg():
+            # Update state (activity=True)
+            # Maybe throttle this to not lock excessively? 
+            # PreviewManager.update_state is thread-safe but lock contention at 30fps * N cams might be non-zero.
+            # But dict update is fast. 
+            pm.update_state(cam_id, activity=True)
+            yield chunk
 
-@app.get("/api/health")
-def health_check():
+    return StreamingResponse(frame_wrapper(), media_type="multipart/x-mixed-replace; boundary=frame")
+
+@app.get("/api/healthz")
+def health_check_simple():
     return {"status": "ok", "service": "IntelliTrack-Local"}
 
 # Serve Frontend (Static) - Mount LAST

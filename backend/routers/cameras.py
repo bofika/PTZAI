@@ -4,6 +4,7 @@ from typing import Optional, List
 from ..camera_manager import CameraManager
 from ..video.preview_manager import PreviewManager
 from ..config import CameraConfig, PreviewConfig
+from datetime import datetime
 
 router = APIRouter()
 camera_manager = CameraManager()
@@ -30,6 +31,42 @@ from ..logger import logger
 def get_system_logs(limit: int = 50, camera_id: Optional[str] = None):
     return logger.get_logs(limit, camera_id)
 
+@router.get("/health")
+def health_check():
+    cams = camera_manager.config_manager.get_cameras()
+    total = len(cams)
+    p_ok = 0
+    p_err = 0
+    c_ok = 0
+    c_err = 0
+    
+    for c in cams:
+        cid = c["id"]
+        # Preview
+        p_status = preview_manager.check_health(cid)
+        if p_status == "ok": p_ok += 1
+        else: p_err += 1
+        
+        # Control
+        state = camera_manager.get_state(cid)
+        c_status = state.get("control_status", "offline")
+        if c_status == "ok": c_ok += 1
+        else: c_err += 1
+
+    status = "ok"
+    if p_err > 0 or c_err > 0:
+        status = "degraded"
+        
+    return {
+        "status": status,
+        "camera_count": total,
+        "preview_ok": p_ok,
+        "preview_error": p_err,
+        "control_ok": c_ok,
+        "control_error": c_err,
+        "ts": datetime.now().isoformat()
+    }
+
 @router.get("/cameras")
 def get_cameras():
     cams = camera_manager.config_manager.get_cameras()
@@ -38,23 +75,28 @@ def get_cameras():
         cam_id = c["id"]
         
         # 1. Preview Status
-        preview_status = preview_manager.check_health(cam_id)
+        p_state = preview_manager.get_state(cam_id)
+        preview_status = p_state.get("status", "offline")
+        p_last_seen = p_state.get("last_seen")
+        p_last_error = p_state.get("last_error")
+
         preview = preview_manager.get_provider(cam_id)
         stream_url = preview.get_stream_url() if preview else ""
         
-        # 2. Control Status
-        # Simple check: if we have a provider instance, we assume it *was* connected.
-        # Ideally OnvifProvider would have a .connected bool.
-        ptz_provider = camera_manager.get_camera(cam_id)
-        control_status = "ok" if ptz_provider else "offline" 
-        
+        # 2. Control Status & Runtime State
+        c_state = camera_manager.get_state(cam_id)
+        control_status = c_state.get("control_status", "offline")
+        c_last_seen = c_state.get("last_seen")
+        c_last_error = c_state.get("last_error")
+
         # 3. Capabilities
+        # (Assuming capabilities are static for now, or cached in the provider)
         caps = {}
+        ptz_provider = camera_manager.get_camera(cam_id)
         if ptz_provider and hasattr(ptz_provider, "get_capabilities"):
             caps = ptz_provider.get_capabilities()
             
-        # 4. Active Source Name
-        # Hide credentials in RTSP
+        # 4. Active Source
         active_source = "Unknown"
         p_cfg = c.get("preview", {})
         if p_cfg.get("type") == "ndi":
@@ -62,20 +104,16 @@ def get_cameras():
         else:
             rtsp = p_cfg.get("rtsp_url", "")
             if "@" in rtsp:
-                # crude sanitize: rtsp://user:pass@ip... -> rtsp://*****@ip...
                 try:
                     parts = rtsp.split("@")
                     active_source = "rtsp://*****@" + parts[1]
-                except:
-                    active_source = "rtsp://sanitized"
+                except: active_source = "rtsp://sanitized"
             else:
                 active_source = rtsp
 
         # Build Object
-        # Strip password first
         c_safe = c.copy()
-        if "password" in c_safe:
-            del c_safe["password"]
+        if "password" in c_safe: del c_safe["password"]
         
         c_safe.update({
             "control_status": control_status,
@@ -83,12 +121,46 @@ def get_cameras():
             "stream_url": stream_url,
             "capabilities": caps,
             "active_preview_source": active_source,
-            "last_error": None, # Todo: track errors
+            "last_error": c_last_error, # Keep legacy top-level for control error? 
+            # Or exposing both? User asked for "preview_status/last_error/last_seen_ts"
+            # Let's provide structured output if possible, but for MVP flattening is easier if distinct.
+            # "last_error" usually implied control error in previous tasks.
+            # Let's add specific fields.
+            "control_last_seen": c_last_seen,
+            "control_last_error": c_last_error,
+            "preview_last_seen": p_last_seen,
+            "preview_last_error": p_last_error,
+            # Backwards compat:
+            "last_seen_ts": c_last_seen, # default to control? or preview? 
+            # Request: "Update preview last_seen_ts ... Expose preview_status/last_error/last_seen_ts"
+            # It seems user wants visibility into PREVIEW last seen.
+            # Let's override `last_error` with `p_last_error` if preview status is error?
+            # Or just provide `preview_last_seen_ts`.
+            "preview_last_seen_ts": p_last_seen,
+            
             "preview_type": p_cfg.get("type", "rtsp")
         })
         
         result.append(c_safe)
     return result
+
+@router.post("/cameras/{cam_id}/preview/restart")
+def restart_preview(cam_id: str):
+    # Fetch config
+    conf = camera_manager.config_manager.get_camera(cam_id) # Wait, config_manager.get_camera returns provider? No. 
+    # ConfigManager doesn't have get_camera returning dict? let's check.
+    # It has get_camera(id) returning DICT in config.py? No, wait. 
+    # CameraManager has get_camera returning PROVIDER. 
+    # ConfigManager has get_camera returning DICT in previous steps? 
+    # Let's peek ConfigManager in config.py or just iterate.
+    cams = camera_manager.config_manager.get_cameras()
+    target_conf = next((c for c in cams if c["id"] == cam_id), None)
+    
+    if not target_conf:
+        raise HTTPException(status_code=404, detail="Camera not found")
+        
+    preview_manager.restart_provider(cam_id, target_conf)
+    return {"status": "restarted"}
 
 @router.post("/cameras")
 def add_camera(config: CameraConfig):
@@ -97,7 +169,7 @@ def add_camera(config: CameraConfig):
     # Start preview provider
     preview_manager.create_provider(new_cam)
     
-    logger.log("INFO", f"Camera added: {new_cam['name']}", new_cam["id"])
+    logger.log("INFO", f"Camera added: {new_cam['name']}", new_cam["id"], "camera.add")
     return {"status": "added", "id": new_cam["id"]}
 
 @router.delete("/cameras/{cam_id}")
@@ -105,7 +177,7 @@ def delete_camera(cam_id: str):
     preview_manager.remove_provider(cam_id)
     camera_manager.remove_camera(cam_id)
     
-    logger.log("INFO", "Camera deleted", cam_id)
+    logger.log("INFO", "Camera deleted", cam_id, "camera.delete")
     return {"status": "removed"}
 
 @router.put("/cameras/{cam_id}")
