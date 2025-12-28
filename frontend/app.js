@@ -22,6 +22,18 @@ HEADER_HEALTH.style.alignSelf = 'center';
 HEADER_HEALTH.style.fontWeight = 'bold';
 HEADER_HEALTH.innerText = "System: --";
 
+async function fetchCameras() {
+    try {
+        const res = await fetch(`${API_BASE}/cameras`);
+        cameras = await res.json();
+        renderGrid();
+    } catch (e) {
+        console.error("Failed to fetch cameras", e);
+    }
+}
+
+// ... (init)
+
 // ... (init)
 async function init() {
     await fetchCameras();
