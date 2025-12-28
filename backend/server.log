@@ -1,13 +1,9 @@
 INFO:     Will watch for changes in these directories: ['/Users/ferencgergelyboth/Documents/Antigravity Projects/PTZAI']
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [24445] using StatReload
+INFO:     Started reloader process [54846] using StatReload
 /Users/ferencgergelyboth/Documents/Antigravity Projects/PTZAI/backend/venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
   warnings.warn(
-INFO:     Started server process [24500]
+INFO:     Started server process [54901]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:root:Started NDI Source: MEETING-ROOM (PTZ-1)
-INFO:     127.0.0.1:56772 - "GET /api/health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56781 - "GET /api/cameras HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56805 - "GET /api/health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56808 - "GET /api/cameras HTTP/1.1" 200 OK

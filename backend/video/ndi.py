@@ -64,18 +64,38 @@ class NDIProvider(PreviewProvider):
                 if t == ndi.FRAME_TYPE_VIDEO:
                     # Convert to numpy
                     frame = np.copy(v.data)
-                    # NDI gives BGRA or UYVY usually, need to check pixel format. 
-                    # Assuming standard defaults (usually UYVY or BGRA)
-                    # For simplicity in Python wrapper, it often returns straight buffer.
-                    # This part is tricky without testing specific camera format.
-                    # If assume BGRA (common in ndi-python examples):
-                    frame = frame.reshape((v.yres, v.xres, 4))
                     
-                    # Store latest
-                    with self.lock:
-                        # Convert to BGR for OpenCV standard usage and smaller MJPEG
-                        self.latest_frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+                    # Handle different pixel formats based on FourCC
+                    # Note: ndi.FOURCC_VIDEO_TYPE_UYVY might be an integer or enum depending on binding version.
+                    # Commonly: 
+                    # UYVY = 1431918169 (0x55595659)
+                    # BGRA = 1095911234 (0x41524742) (?) - Need to check constants if available, or just check size.
                     
+                    try:
+                        # Logic based on size ratio if specific constants aren't reliable in this binding wrapper
+                        # Expected size for RGBA = W * H * 4
+                        # Expected size for UYVY = W * H * 2
+                        
+                        expected_rgba = v.xres * v.yres * 4
+                        expected_uyvy = v.xres * v.yres * 2
+                        
+                        if frame.size == expected_uyvy:
+                            # UYVY (16bpp)
+                            frame = frame.reshape((v.yres, v.xres, 2))
+                            # Convert UYVY to BGR
+                            with self.lock:
+                                self.latest_frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR_UYVY)
+                        elif frame.size == expected_rgba:
+                            # BGRA (32bpp)
+                            frame = frame.reshape((v.yres, v.xres, 4))
+                            with self.lock:
+                                self.latest_frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+                        else:
+                            logging.warning(f"NDI: Unknown frame size {frame.size} for {v.xres}x{v.yres}. Expected {expected_rgba} or {expected_uyvy}.")
+                            
+                    except Exception as e:
+                        logging.error(f"NDI Decode Error: {e}")
+
                     ndi.recv_free_video_v2(self.recv, v)
                 elif t == ndi.FRAME_TYPE_AUDIO:
                     ndi.recv_free_audio_v2(self.recv, a)
