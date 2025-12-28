@@ -98,7 +98,27 @@
                         required></div>
                 <div class="form-group"><input type="text" name="username" placeholder="Username" required></div>
                 <div class="form-group"><input type="password" name="password" placeholder="Password" required></div>
-                <div class="form-group"><input type="text" name="rtsp_url" placeholder="RTSP URL (rtsp://...)" required>
+                <div class="form-group">
+                    <label style="color:#e5e7eb; display:block; margin-bottom:5px;">Source Type</label>
+                    <select name="video_source_type" id="source-type-select"
+                        style="width:100%; padding:8px; margin-bottom:10px;">
+                        <option value="rtsp">RTSP</option>
+                        <option value="ndi">NDI</option>
+                    </select>
+                </div>
+
+                <div id="rtsp-fields">
+                    <div class="form-group"><input type="text" name="rtsp_url" id="rtsp_url_input"
+                            placeholder="RTSP URL (rtsp://...)" style="width:100%;"></div>
+                </div>
+
+                <div id="ndi-fields" style="display:none;">
+                    <div class="form-group" style="display:flex; gap:10px;">
+                        <select name="ndi_source_name" id="ndi-source-select" style="flex:1; padding:8px;">
+                            <option value="">Select NDI Source...</option>
+                        </select>
+                        <button type="button" id="scan-ndi-btn" style="padding:0 10px;">Scan</button>
+                    </div>
                 </div>
                 <div class="form-group"><input type="hidden" name="id" value=""></div>
 
