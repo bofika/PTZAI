@@ -12,72 +12,204 @@ let cameras = [];
 let hlsInstances = {};
 let logsInterval = null;
 
-// --- Initialization ---
+// ... (Top constants)
+const HEADER_HEALTH = document.createElement('div');
+// Inject Health Indicator into Header
+document.querySelector('header > div').prepend(HEADER_HEALTH);
+HEADER_HEALTH.id = 'global-health';
+HEADER_HEALTH.style.marginRight = '15px';
+HEADER_HEALTH.style.alignSelf = 'center';
+HEADER_HEALTH.style.fontWeight = 'bold';
+HEADER_HEALTH.innerText = "System: --";
+
+// ... (init)
 async function init() {
     await fetchCameras();
     setupEventListeners();
     setupKeyboardShortcuts();
     setInterval(pollStatus, 3000);
-
-    // Logs Toggle
-    const logsBtn = document.getElementById('logs-toggle-btn');
-    if (logsBtn) {
-        logsBtn.onclick = () => {
-            const drawer = document.getElementById('logs-drawer');
-            if (!drawer) return;
-            drawer.classList.toggle('open');
-            if (drawer.classList.contains('open')) {
-                fetchLogs();
-                if (!logsInterval) logsInterval = setInterval(fetchLogs, 2000);
-            } else {
-                if (logsInterval) clearInterval(logsInterval);
-                logsInterval = null;
-            }
-        };
-    }
-}
-
-async function fetchLogs() {
-    try {
-        const res = await fetch(`${API_BASE}/logs?limit=100`);
-        const logs = await res.json();
-        const container = document.getElementById('logs-list');
-        container.innerHTML = logs.map(l => `
-            <div class="log-entry ${l.level.toLowerCase()}">
-                <span class="log-ts">${new Date(l.ts).toLocaleTimeString()}</span>
-                <span style="font-weight:bold">[${l.level}]</span>
-                ${l.camera_id ? `[${l.camera_id}]` : ''}: ${l.message}
-            </div>
-        `).join('');
-    } catch (e) { console.error(e); }
-}
-
-// --- API Calls ---
-async function fetchCameras() {
-    try {
-        const res = await fetch(`${API_BASE}/cameras`);
-        cameras = await res.json();
-        renderGrid();
-    } catch (e) {
-        console.error("Failed to fetch cameras", e);
-        // Show error? For now update status
-    }
+    // ...
 }
 
 async function pollStatus() {
-    // Lightweight refresh - just get cameras again to update status
     try {
+        // 1. Get Cameras (includes detailed status)
         const res = await fetch(`${API_BASE}/cameras`);
-        const newData = await res.json();
-
-        // Merge status only, avoid re-rendering video players if possible
-        // Ideally we diff, but for now simple re-render of labels/status
-        cameras = newData;
+        cameras = await res.json();
         updateStatusIndicators();
+
+        // 2. Get Global Health
+        const hRes = await fetch(`${API_BASE}/health`);
+        const hData = await hRes.json();
+        updateGlobalHealth(hData);
+
     } catch (e) {
         console.error("Poll failed", e);
+        HEADER_HEALTH.innerText = "System: Offline";
+        HEADER_HEALTH.style.color = 'red';
     }
 }
+
+function updateGlobalHealth(data) {
+    const el = document.getElementById('global-health');
+    if (!el) return;
+
+    if (data.status === 'ok') {
+        el.innerText = "System: OK";
+        el.style.color = '#10b981'; // Green
+    } else {
+        el.innerText = "System: Degraded";
+        el.style.color = '#eab308'; // Yellow
+    }
+    el.title = `Preview: ${data.preview_error} errors, Control: ${data.control_error} errors`;
+}
+
+// ... (Update Status Indicators)
+function updateStatusIndicators() {
+    cameras.forEach(cam => {
+        const cell = document.querySelector(`.video-cell[data-id="${cam.id}"]`);
+        if (!cell) return;
+
+        const badgeContainer = cell.querySelector('.status-badges');
+        if (!badgeContainer) return;
+
+        // Control Status
+        const cStat = cam.control_status || 'offline';
+        let cColor = '#6b7280'; // gray
+        if (cStat === 'ok') cColor = '#10b981';
+        else if (cStat === 'error') cColor = '#ef4444';
+
+        // Preview Status
+        const pStat = cam.preview_status || 'offline';
+        let pColor = '#ef4444'; // red default
+        if (pStat === 'ok') pColor = '#10b981';
+        else if (pStat === 'starting') pColor = '#eab308'; // yellow
+        else if (pStat === 'restarting') pColor = '#3b82f6'; // blue
+
+        badgeContainer.innerHTML = `
+            <div title="Control: ${cStat}" style="width:10px; height:10px; border-radius:50%; background:${cColor}; border:1px solid #fff;"></div>
+            <div title="Preview: ${pStat}" style="width:10px; height:10px; border-radius:50%; background:${pColor}; border:1px solid #fff;"></div>
+        `;
+
+        // Update Last Seen/Error in Edit Modal if open?
+        // Or better, add it to the cell? Request says "Camera panel" or "Tooltip".
+        // Let's hide it in cell for clarity, maybe hover? 
+        // For "Last Seen", let's put it in the Edit Modal for now as a "Details" section.
+        const modalId = document.querySelector('input[name="id"]').value;
+        if (document.getElementById('add-camera-modal').style.display === 'flex' && modalId === cam.id) {
+            updateModalStats(cam);
+        }
+    });
+}
+
+function updateModalStats(cam) {
+    const statDiv = document.getElementById('modal-stats');
+    if (!statDiv) return;
+
+    const lastSeen = cam.last_seen_ts ? new Date(cam.last_seen_ts).toLocaleTimeString() : "Never";
+    const lastErr = cam.last_error || "None";
+
+    statDiv.innerHTML = `
+        <div style="font-size:0.8rem; color:#9ca3af; margin-bottom:10px; padding:5px; background:#111; border-radius:4px;">
+            <div>Last Seen: ${lastSeen}</div>
+            <div>Last Error: <span style="color:${cam.last_error ? '#ef4444' : 'inherit'}">${lastErr}</span></div>
+            <div>Status: P:${cam.preview_status} / C:${cam.control_status}</div>
+        </div>
+    `;
+
+    // Enable/Disable Restart
+    const resBtn = document.getElementById('restart-preview-btn');
+    if (resBtn) {
+        if (cam.preview_status === 'starting' || cam.preview_status === 'restarting') {
+            resBtn.disabled = true;
+            resBtn.innerText = "Restarting...";
+        } else {
+            resBtn.disabled = false;
+            resBtn.innerText = "Restart Preview";
+        }
+    }
+}
+
+async function restartPreview(camId) {
+    if (!confirm("Restart video preview?")) return;
+    try {
+        await fetch(`${API_BASE}/cameras/${camId}/preview/restart`, { method: 'POST' });
+        // Force poll
+        setTimeout(pollStatus, 500);
+    } catch (e) { console.error(e); alert("Restart failed"); }
+}
+
+// ... (openEditModal)
+function openEditModal(cam) {
+    // ... existing ... (populate form)
+    MODAL_TITLE.innerText = "Edit Camera";
+    ADD_BTN.innerText = "Save";
+
+    const form = document.getElementById('add-camera-form');
+    form.id.value = cam.id;
+    form.name.value = cam.name;
+    form.ip.value = cam.ip;
+    form.onvif_port.value = cam.onvif_port;
+    form.username.value = cam.username;
+
+    // Preview
+    const pType = cam.preview_type || 'rtsp'; // api returns preview_type now
+    document.getElementById('source-type-select').value = pType;
+
+    // ... (NDI/RTSP fields logic) ...
+    // Note: api returns 'active_preview_source'. 
+    // If edit, ideally we show the configured value, which we might not have separately from 'active'.
+    // Actually the GET response merges config. 
+    // We should rely on standard fields if available.
+
+    if (pType === 'ndi') {
+        document.getElementById('ndi-fields').style.display = 'block';
+        document.getElementById('rtsp-fields').style.display = 'none';
+        // Check if we have source name from API.
+        if (cam.active_preview_source && cam.active_preview_source !== 'None') {
+            const select = document.getElementById('ndi-source-select');
+            // Add option if not exists
+            if (![...select.options].some(o => o.value === cam.active_preview_source)) {
+                const opt = document.createElement('option');
+                opt.value = cam.active_preview_source;
+                opt.innerText = cam.active_preview_source;
+                opt.selected = true;
+                select.appendChild(opt);
+            }
+            select.value = cam.active_preview_source;
+        }
+    } else {
+        document.getElementById('rtsp-fields').style.display = 'block';
+        document.getElementById('ndi-fields').style.display = 'none';
+        // active_preview_source might be sanitized. 
+        // We can't recover password. User must re-enter if changing.
+        // Or we use placeholder.
+        form.rtsp_url.placeholder = cam.active_preview_source;
+        form.rtsp_url.value = ""; // Clear value for security, show current as placeholder
+    }
+
+    MODAL.style.display = 'flex';
+
+    // Inject Stats & Restart Button into Modal if not present
+    let extras = document.getElementById('modal-extras');
+    if (!extras) {
+        extras = document.createElement('div');
+        extras.id = 'modal-extras';
+        form.parentNode.insertBefore(extras, form); // Insert before form? or after? 
+        // Better: append to modal, before actions.
+    }
+
+    extras.innerHTML = `
+        <div id="modal-stats"></div>
+        <div style="margin-bottom:15px; text-align:right;">
+             <button type="button" id="restart-preview-btn" style="background:#f59e0b; color:black; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">Restart Preview</button>
+        </div>
+    `;
+
+    document.getElementById('restart-preview-btn').onclick = () => restartPreview(cam.id);
+    updateModalStats(cam);
+}
+
 
 async function saveCamera(formData) {
     const isEdit = !!formData.id && cameras.some(c => c.id === formData.id);
@@ -414,23 +546,51 @@ function openEditModal(cam) {
     // form.password.value = ""; // Don't show password
 
     // Preview
-    const pType = cam.preview?.type || 'rtsp';
+    const pType = cam.preview_type || 'rtsp';
     document.getElementById('source-type-select').value = pType;
 
     if (pType === 'ndi') {
         document.getElementById('ndi-fields').style.display = 'block';
         document.getElementById('rtsp-fields').style.display = 'none';
-        // Try to set NDI source name.
-        // We'll create an option for it temporarily so it shows up.
-        if (cam.preview?.ndi_source) {
+        if (cam.active_preview_source && cam.active_preview_source !== 'None') {
             const select = document.getElementById('ndi-source-select');
-            select.innerHTML = `<option value="${cam.preview.ndi_source}" selected>${cam.preview.ndi_source}</option>`;
+            if (![...select.options].some(o => o.value === cam.active_preview_source)) {
+                const opt = document.createElement('option');
+                opt.value = cam.active_preview_source;
+                opt.innerText = cam.active_preview_source;
+                opt.selected = true;
+                select.appendChild(opt);
+            }
+            select.value = cam.active_preview_source;
         }
     } else {
         document.getElementById('rtsp-fields').style.display = 'block';
         document.getElementById('ndi-fields').style.display = 'none';
-        form.rtsp_url.value = cam.preview?.rtsp_url || "";
+        form.rtsp_url.value = ""; // Clear for security
+        form.rtsp_url.placeholder = cam.active_preview_source || "rtsp://...";
     }
+
+    // Inject Stats & Restart Container if needed
+    let extras = document.getElementById('modal-extras');
+    if (!extras) {
+        extras = document.createElement('div');
+        extras.id = 'modal-extras';
+        // Insert before actions
+        const actions = form.querySelector('.modal-actions');
+        form.insertBefore(extras, actions);
+    }
+
+    // Initial Render of stats/restart
+    extras.innerHTML = `
+        <div id="modal-stats" style="margin-bottom:10px;"></div>
+        <div style="margin-bottom:15px; text-align:right;">
+             <button type="button" id="restart-preview-btn" style="background:#f59e0b; color:black; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">Restart Preview</button>
+        </div>
+        <hr style="border:0; border-top:1px solid #333; margin-bottom:15px;">
+    `;
+
+    document.getElementById('restart-preview-btn').onclick = () => restartPreview(cam.id);
+    updateModalStats(cam);
 
     MODAL.style.display = 'flex';
 }

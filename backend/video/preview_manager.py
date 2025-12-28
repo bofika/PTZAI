@@ -84,6 +84,32 @@ class PreviewManager:
                  return "error"
             return "ok"
 
+    def restart_provider(self, cam_id: str, new_config: Dict = None) -> bool:
+        """
+        Stops and restarts the provider. 
+        If new_config is provided, it uses it; otherwise uses existing config logic 
+        (requires caller to pass full config usually, or we'd need to fetch it).
+        Since we don't store config here, we rely on the caller passing it.
+        Wait, we are usually called from the router which has config.
+        """
+        from ..logger import logger
+        
+        with self._lock:
+            if cam_id in self.providers:
+                try:
+                    self.providers[cam_id].stop()
+                    logger.log("INFO", "Preview stopped for restart", cam_id, "preview.restart")
+                except Exception as e:
+                    logger.log("ERROR", f"Error stopping for restart: {e}", cam_id, "preview.error")
+                del self.providers[cam_id]
+        
+        # Create new
+        if new_config:
+            self.create_provider(new_config)
+            logger.log("INFO", "Preview restarted", cam_id, "preview.restart")
+            return True
+        return False
+
     def remove_provider(self, cam_id: str):
         with self._lock:
             if cam_id in self.providers:

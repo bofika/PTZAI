@@ -81,7 +81,8 @@ class NDIProvider(PreviewProvider):
                     ndi.recv_free_audio_v2(self.recv, a)
                 elif t == ndi.FRAME_TYPE_METADATA:
                     ndi.recv_free_metadata(self.recv, m)
-                elif t == ndi.FRAME_TYPE_STATUS_CHANGE:
+                else:
+                    # Status change or other types (FRAME_TYPE_STATUS_CHANGE might be missing in lib)
                     pass
             except Exception as e:
                 logging.error(f"NDI Capture Error: {e}")
