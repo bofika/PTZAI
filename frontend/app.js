@@ -9,12 +9,47 @@ const ADD_BTN = document.querySelector('#add-camera-form button[type="submit"]')
 
 let selectedCamId = null;
 let cameras = [];
-let hlsInstances = {}; // Map camId -> hls instance
+let hlsInstances = {};
+let logsInterval = null;
 
 // --- Initialization ---
 async function init() {
     await fetchCameras();
     setupEventListeners();
+    setupKeyboardShortcuts();
+    setInterval(pollStatus, 3000);
+
+    // Logs Toggle
+    const logsBtn = document.getElementById('logs-toggle-btn');
+    if (logsBtn) {
+        logsBtn.onclick = () => {
+            const drawer = document.getElementById('logs-drawer');
+            if (!drawer) return;
+            drawer.classList.toggle('open');
+            if (drawer.classList.contains('open')) {
+                fetchLogs();
+                if (!logsInterval) logsInterval = setInterval(fetchLogs, 2000);
+            } else {
+                if (logsInterval) clearInterval(logsInterval);
+                logsInterval = null;
+            }
+        };
+    }
+}
+
+async function fetchLogs() {
+    try {
+        const res = await fetch(`${API_BASE}/logs?limit=100`);
+        const logs = await res.json();
+        const container = document.getElementById('logs-list');
+        container.innerHTML = logs.map(l => `
+            <div class="log-entry ${l.level.toLowerCase()}">
+                <span class="log-ts">${new Date(l.ts).toLocaleTimeString()}</span>
+                <span style="font-weight:bold">[${l.level}]</span>
+                ${l.camera_id ? `[${l.camera_id}]` : ''}: ${l.message}
+            </div>
+        `).join('');
+    } catch (e) { console.error(e); }
 }
 
 // --- API Calls ---
@@ -25,8 +60,22 @@ async function fetchCameras() {
         renderGrid();
     } catch (e) {
         console.error("Failed to fetch cameras", e);
-        // Show error in grid
-        VIDEO_GRID.innerHTML = '<div class="error-state">Failed to load cameras. Backend offline?</div>';
+        // Show error? For now update status
+    }
+}
+
+async function pollStatus() {
+    // Lightweight refresh - just get cameras again to update status
+    try {
+        const res = await fetch(`${API_BASE}/cameras`);
+        const newData = await res.json();
+
+        // Merge status only, avoid re-rendering video players if possible
+        // Ideally we diff, but for now simple re-render of labels/status
+        cameras = newData;
+        updateStatusIndicators();
+    } catch (e) {
+        console.error("Poll failed", e);
     }
 }
 
@@ -91,9 +140,12 @@ async function ptzAction(action, params = {}) {
     }
 }
 
-async function fetchPresets(camId) {
+async function fetchPresets(camId, force = false) {
     try {
-        const res = await fetch(`${API_BASE}/cameras/${camId}/presets`);
+        const endpoint = force ? `${API_BASE}/cameras/${camId}/presets/refresh` : `${API_BASE}/cameras/${camId}/presets`;
+        const method = force ? 'POST' : 'GET';
+
+        const res = await fetch(endpoint, { method });
         const presets = await res.json();
         renderPresets(presets);
     } catch (e) {
@@ -132,8 +184,6 @@ async function scanNDI() {
 // --- Rendering ---
 function renderGrid() {
     VIDEO_GRID.innerHTML = '';
-
-    // Always render 4 slots
     const slots = [0, 1, 2, 3];
 
     slots.forEach(i => {
@@ -144,29 +194,29 @@ function renderGrid() {
         if (cam) {
             cell.dataset.id = cam.id;
             cell.onclick = (e) => {
-                // Ignore clicks on buttons
                 if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
                 selectCamera(cam);
             };
+
+            // Status Badge Container
+            const statusBadge = document.createElement('div');
+            statusBadge.className = 'status-badges';
+            statusBadge.style.cssText = "position:absolute; top:5px; left:5px; z-index:20; display:flex; gap:5px;";
+
+            // Generate Badges (filled by updateStatusIndicators)
+            cell.appendChild(statusBadge);
 
             // Header Container (Name + Edit/Del)
             const header = document.createElement('div');
             header.className = 'cam-header';
             header.style.position = 'absolute';
             header.style.top = '0';
-            header.style.left = '0';
-            header.style.right = '0';
+            header.style.right = '0'; // Move to right
             header.style.padding = '5px';
             header.style.display = 'flex';
-            header.style.justifyContent = 'space-between';
             header.style.zIndex = '10';
             header.style.background = 'rgba(0,0,0,0.5)';
-
-            const label = document.createElement('span');
-            label.innerText = cam.name;
-            label.style.fontWeight = 'bold';
-
-            const actions = document.createElement('div');
+            header.style.borderRadius = '0 0 0 4px';
 
             const editBtn = document.createElement('button');
             editBtn.innerText = '⚙️';
@@ -176,21 +226,27 @@ function renderGrid() {
             delBtn.innerText = '🗑️';
             delBtn.onclick = () => deleteCamera(cam.id);
 
-            actions.appendChild(editBtn);
-            actions.appendChild(delBtn);
+            header.appendChild(editBtn);
+            header.appendChild(delBtn);
 
-            header.appendChild(label);
-            header.appendChild(actions);
             cell.appendChild(header);
+
+            // Name Label (Bottom Left)
+            const label = document.createElement('div');
+            label.className = 'cam-label';
+            label.innerText = cam.name;
+            cell.appendChild(label);
 
             // Player Logic
             let playerEl;
             const url = cam.stream_url;
 
+            // Only show player if preview is NOT offline/error? 
+            // Better: Show error placeholder if URL empty.
             if (!url) {
                 const rs = document.createElement('div');
                 rs.className = 'status-indicator offline';
-                rs.innerText = "OFFLINE";
+                rs.innerText = "PREVIEW OFFLINE";
                 playerEl = rs;
             } else if (url.includes('mjpeg')) {
                 playerEl = document.createElement('img');
@@ -198,11 +254,8 @@ function renderGrid() {
                 playerEl.src = url;
                 playerEl.style.objectFit = 'contain';
                 playerEl.onerror = () => {
-                    playerEl.style.display = 'none';
-                    const err = document.createElement('div');
-                    err.className = 'status-indicator error';
-                    err.innerText = "PREVIEW ERROR";
-                    cell.appendChild(err);
+                    // Handle broken MJPEG
+                    // Don't hide, but maybe overlay?
                 };
             } else {
                 playerEl = document.createElement('video');
@@ -216,12 +269,6 @@ function renderGrid() {
                     hls.loadSource(url);
                     hls.attachMedia(playerEl);
                     hls.on(Hls.Events.MANIFEST_PARSED, () => playerEl.play().catch(e => console.log(e)));
-                    hls.on(Hls.Events.ERROR, () => {
-                        const err = document.createElement('div');
-                        err.className = 'status-indicator error';
-                        err.innerText = "STREAM ERROR";
-                        if (!cell.querySelector('.error')) cell.appendChild(err);
-                    });
                     hlsInstances[cam.id] = hls;
                 } else if (playerEl.canPlayType('application/vnd.apple.mpegurl')) {
                     playerEl.src = url;
@@ -239,12 +286,37 @@ function renderGrid() {
         VIDEO_GRID.appendChild(cell);
     });
 
+    updateStatusIndicators();
+
     if (selectedCamId && cameras.find(c => c.id === selectedCamId)) {
         highlightCamera(selectedCamId);
     } else {
         selectedCamId = null;
         updateControlsUI();
     }
+}
+
+function updateStatusIndicators() {
+    cameras.forEach(cam => {
+        const cell = document.querySelector(`.video-cell[data-id="${cam.id}"]`);
+        if (!cell) return;
+
+        const badgeContainer = cell.querySelector('.status-badges');
+        if (!badgeContainer) return;
+
+        // Control Status (PTZ)
+        const cStat = cam.control_status || 'offline';
+        const cColor = cStat === 'ok' ? '#10b981' : (cStat === 'error' ? '#ef4444' : '#6b7280');
+
+        // Preview Status
+        const pStat = cam.preview_status || 'offline';
+        const pColor = pStat === 'ok' ? '#10b981' : (pStat === 'starting' ? '#eab308' : '#ef4444');
+
+        badgeContainer.innerHTML = `
+            <div title="Control: ${cStat}" style="width:10px; height:10px; border-radius:50%; background:${cColor}; border:1px solid #fff;"></div>
+            <div title="Preview: ${pStat}" style="width:10px; height:10px; border-radius:50%; background:${pColor}; border:1px solid #fff;"></div>
+        `;
+    });
 }
 
 function selectCamera(cam) {
@@ -284,6 +356,40 @@ function updateControlsUI() {
     }
 }
 
+// --- Keyboard Shortcuts ---
+function setupKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        if (!selectedCamId) return;
+        if (e.target.tagName === 'INPUT') return; // Don't trigger if typing
+
+        // Prevent scrolling with arrows/space
+        if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].indexOf(e.code) > -1) {
+            e.preventDefault();
+        }
+
+        const speed = parseFloat(document.getElementById('speed-slider').value);
+
+        switch (e.code) {
+            case 'ArrowUp': ptzAction('move', { pan: 0, tilt: 1, speed }); break;
+            case 'ArrowDown': ptzAction('move', { pan: 0, tilt: -1, speed }); break;
+            case 'ArrowLeft': ptzAction('move', { pan: -1, tilt: 0, speed }); break;
+            case 'ArrowRight': ptzAction('move', { pan: 1, tilt: 0, speed }); break;
+            // Zoom +/- keys? (Equal/Minus)
+            case 'Equal': ptzAction('zoom', { zoom: 1, speed }); break;
+            case 'Minus': ptzAction('zoom', { zoom: -1, speed }); break;
+            case 'Space': ptzAction('stop'); break;
+        }
+    });
+
+    document.addEventListener('keyup', (e) => {
+        if (!selectedCamId) return;
+        // Stop on release of movement keys
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Equal', 'Minus'].includes(e.code)) {
+            ptzAction('stop');
+        }
+    });
+}
+
 // --- Modal Handling ---
 function openAddModal() {
     MODAL_TITLE.innerText = "Add Camera";
@@ -305,7 +411,7 @@ function openEditModal(cam) {
     form.ip.value = cam.ip;
     form.onvif_port.value = cam.onvif_port;
     form.username.value = cam.username;
-    form.password.value = ""; // Don't show password
+    // form.password.value = ""; // Don't show password
 
     // Preview
     const pType = cam.preview?.type || 'rtsp';
@@ -314,9 +420,12 @@ function openEditModal(cam) {
     if (pType === 'ndi') {
         document.getElementById('ndi-fields').style.display = 'block';
         document.getElementById('rtsp-fields').style.display = 'none';
-        // Populate specific fields if we can (harder with dynamic DOM for NDI select)
-        // We set the select manually after scan? Or just leave blank to force re-select.
-        // Let's try to set value if we scan.
+        // Try to set NDI source name.
+        // We'll create an option for it temporarily so it shows up.
+        if (cam.preview?.ndi_source) {
+            const select = document.getElementById('ndi-source-select');
+            select.innerHTML = `<option value="${cam.preview.ndi_source}" selected>${cam.preview.ndi_source}</option>`;
+        }
     } else {
         document.getElementById('rtsp-fields').style.display = 'block';
         document.getElementById('ndi-fields').style.display = 'none';
@@ -372,9 +481,13 @@ function setupEventListeners() {
             ptzAction('move', { pan, tilt, speed });
         };
         const stopMove = () => ptzAction('stop');
+
+        // Touch support
         btn.onmousedown = startMove;
         btn.onmouseup = stopMove;
         btn.onmouseleave = stopMove;
+        btn.ontouchstart = (e) => { e.preventDefault(); startMove(); };
+        btn.ontouchend = (e) => { e.preventDefault(); stopMove(); };
     });
 
     document.querySelectorAll('.ptz-zoom-btn').forEach(btn => {
@@ -384,9 +497,12 @@ function setupEventListeners() {
             ptzAction('zoom', { zoom, speed });
         };
         const stopZoom = () => ptzAction('stop');
+
         btn.onmousedown = startZoom;
         btn.onmouseup = stopZoom;
         btn.onmouseleave = stopZoom;
+        btn.ontouchstart = (e) => { e.preventDefault(); startZoom(); };
+        btn.ontouchend = (e) => { e.preventDefault(); stopZoom(); };
     });
 
     document.getElementById('speed-slider').oninput = (e) => {
@@ -402,9 +518,23 @@ function setupEventListeners() {
         const name = prompt("Enter Preset Name:");
         if (name) {
             fetch(`${API_BASE}/cameras/${selectedCamId}/presets/${name}/set`, { method: 'POST' });
-            setTimeout(() => fetchPresets(selectedCamId), 1000);
+            setTimeout(() => fetchPresets(selectedCamId, true), 1000); // refresh
         }
     };
+
+    // Refresh Presets Btn
+    // Add logic to UI for refresh button? 
+    // Assuming UI has one or we add it dynamically?
+    // Let's create one dynamically in the preset controls if missing.
+    const presetContainer = document.querySelector('.preset-controls');
+    if (presetContainer && !document.getElementById('refresh-preset-btn')) {
+        const refBtn = document.createElement('button');
+        refBtn.id = 'refresh-preset-btn';
+        refBtn.innerText = '↻';
+        refBtn.title = "Refresh Presets";
+        refBtn.onclick = () => { if (selectedCamId) fetchPresets(selectedCamId, true); };
+        presetContainer.appendChild(refBtn);
+    }
 }
 
 window.onload = init;
