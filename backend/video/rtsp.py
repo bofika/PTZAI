@@ -1,9 +1,9 @@
-from .source import VideoSource
+from .preview import PreviewProvider
 from typing import Optional
 import numpy as np
 from ..stream.manager import StreamManager
 
-class RTSPSource(VideoSource):
+class RTSPProvider(PreviewProvider):
     def __init__(self, rtsp_url: str, id: str):
         self.rtsp_url = rtsp_url
         self.id = id

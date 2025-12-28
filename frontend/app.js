@@ -26,18 +26,36 @@ async function fetchCameras() {
     }
 }
 
-async function addCamera(data) {
+async function addCamera(formData) {
     try {
-        if (!data.id) data.id = 'cam_' + Math.floor(Math.random() * 10000);
+        // Construct Payload matching new Schema
+        const payload = {
+            id: formData.id || 'cam_' + Math.floor(Math.random() * 10000),
+            name: formData.name,
+            ip: formData.ip,
+            onvif_port: parseInt(formData.onvif_port),
+            username: formData.username,
+            password: formData.password,
+            control_protocol: 'onvif', // Default for now
+            preview: {
+                type: formData.video_source_type, // 'ndi' or 'rtsp'
+                ndi_source: formData.ndi_source_name || null,
+                rtsp_url: formData.rtsp_url || null
+            }
+        };
 
-        await fetch(`${API_BASE}/cameras`, {
+        const res = await fetch(`${API_BASE}/cameras`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
+            body: JSON.stringify(payload)
         });
+
+        if (!res.ok) throw new Error('Add failed');
+
         closeModal();
         fetchCameras();
     } catch (e) {
+        console.error(e);
         alert("Failed to add camera");
     }
 }
@@ -62,6 +80,7 @@ async function fetchPresets(camId) {
         renderPresets(presets);
     } catch (e) {
         console.error("Failed to fetch presets", e);
+        renderPresets([]);
     }
 }
 
@@ -70,7 +89,7 @@ async function scanNDI() {
     const select = document.getElementById('ndi-source-select');
     btn.innerText = "Scanning...";
     try {
-        const res = await fetch(`${API_BASE}/discovery/ndi`);
+        const res = await fetch(`${API_BASE}/ndi/sources`); // New Endpoint
         const sources = await res.json();
         select.innerHTML = '<option value="">Select NDI Source...</option>';
         sources.forEach(src => {
@@ -106,45 +125,43 @@ function renderGrid() {
         cell.dataset.id = cam.id;
         cell.onclick = () => selectCamera(cam);
 
-        // Video container logic
         const label = document.createElement('div');
         label.className = 'cam-label';
         label.innerText = cam.name;
 
-        // Determine Player
+        // Player Logic
         let playerEl;
-        if (cam.stream_url && cam.stream_url.includes('mjpeg')) {
-            // MJPEG Player (Image tag)
+        const url = cam.stream_url;
+
+        if (!url) {
+            // Offline
+            const offline = document.createElement('div');
+            offline.className = "offline-msg";
+            offline.innerText = "Offline";
+            offline.style.cssText = "display:flex; justify-content:center; align-items:center; width:100%; height:100%; color:#6b7280; font-size:1.2em;";
+            playerEl = offline;
+        } else if (url.includes('mjpeg')) {
+            // MJPEG
             playerEl = document.createElement('img');
             playerEl.className = 'video-player';
-            playerEl.src = cam.stream_url;
-            playerEl.style.objectFit = 'contain'; // Better for variable aspect ratios
+            playerEl.src = url;
+            playerEl.style.objectFit = 'contain';
         } else {
-            // HLS Player (Video tag)
+            // HLS / RTSP
             playerEl = document.createElement('video');
-            playerEl.id = `video-${cam.id}`;
+            playerEl.className = 'video-player';
             playerEl.muted = true;
             playerEl.autoplay = true;
             playerEl.playsInline = true;
-            playerEl.className = 'video-player';
 
-            // Allow time for source to start
-            if (cam.stream_url) {
-                if (Hls.isSupported() && cam.stream_url.includes('.m3u8')) {
-                    const hls = new Hls({ lowLatencyMode: true });
-                    hls.loadSource(cam.stream_url);
-                    hls.attachMedia(playerEl);
-                    hls.on(Hls.Events.MANIFEST_PARSED, () => playerEl.play().catch(e => console.log("Autoplay blocked", e)));
-                    hlsInstances[cam.id] = hls;
-                } else if (playerEl.canPlayType('application/vnd.apple.mpegurl')) {
-                    playerEl.src = cam.stream_url;
-                }
-            } else {
-                // Offline
-                const offline = document.createElement('div');
-                offline.className = "flex items-center justify-center text-gray-500 h-full w-full bg-black";
-                offline.innerText = "Offline / No Stream";
-                playerEl = offline;
+            if (Hls.isSupported() && url.includes('.m3u8')) {
+                const hls = new Hls({ lowLatencyMode: true });
+                hls.loadSource(url);
+                hls.attachMedia(playerEl);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => playerEl.play().catch(e => console.log("Autoplay blocked", e)));
+                hlsInstances[cam.id] = hls;
+            } else if (playerEl.canPlayType('application/vnd.apple.mpegurl')) {
+                playerEl.src = url;
             }
         }
 
@@ -178,6 +195,7 @@ function highlightCamera(id) {
 
 function renderPresets(presets) {
     PRESET_SELECT.innerHTML = '<option value="">Select Preset...</option>';
+    if (!presets) return;
     presets.forEach(p => {
         const opt = document.createElement('option');
         opt.value = p.id;
@@ -206,22 +224,24 @@ function setupEventListeners() {
     document.getElementById('scan-ndi-btn').onclick = scanNDI;
 
     // Toggle fields based on type
-    document.getElementById('source-type-select').onchange = (e) => {
-        const type = e.target.value;
-        if (type === 'ndi') {
-            document.getElementById('rtsp-fields').style.display = 'none';
-            document.getElementById('ndi-fields').style.display = 'block';
-        } else {
-            document.getElementById('rtsp-fields').style.display = 'block';
-            document.getElementById('ndi-fields').style.display = 'none';
-        }
-    };
+    const sourceTypeSelect = document.getElementById('source-type-select');
+    if (sourceTypeSelect) {
+        sourceTypeSelect.onchange = (e) => {
+            const type = e.target.value;
+            if (type === 'ndi') {
+                document.getElementById('rtsp-fields').style.display = 'none';
+                document.getElementById('ndi-fields').style.display = 'block';
+            } else {
+                document.getElementById('rtsp-fields').style.display = 'block';
+                document.getElementById('ndi-fields').style.display = 'none';
+            }
+        };
+    }
 
     document.getElementById('add-camera-form').onsubmit = (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
         const data = Object.fromEntries(fd.entries());
-        data.onvif_port = parseInt(data.onvif_port);
         addCamera(data);
     };
 
@@ -265,8 +285,6 @@ function setupEventListeners() {
 
     document.getElementById('goto-preset-btn').onclick = () => {
         const pid = PRESET_SELECT.value;
-        if (pid) ptzAction('goto', { preset_id: pid }); // Note: API might need fixing if logic differs
-        // Logic fix: goto_preset endpoint is separate.
         if (pid) fetch(`${API_BASE}/cameras/${selectedCamId}/presets/${pid}/goto`, { method: 'POST' });
     };
 

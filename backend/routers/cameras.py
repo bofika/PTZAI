@@ -1,32 +1,28 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
-import uuid
 from ..camera_manager import CameraManager
-from ..video.manager import SourceManager
-from ..config import CameraConfig
+from ..video.preview_manager import PreviewManager
+from ..config import CameraConfig, PreviewConfig
 
 router = APIRouter()
 camera_manager = CameraManager()
-source_manager = SourceManager()
+preview_manager = PreviewManager()
 
 # --- Models ---
 class PTZRequest(BaseModel):
-    action: str  # move, stop, zoom
+    action: str
     pan: float = 0.0
     tilt: float = 0.0
     zoom: float = 0.0
     speed: float = 0.5
 
-class PresetRequest(BaseModel):
-    name: str
-
 # --- Routes ---
 
-@router.get("/discovery/ndi")
-def discover_ndi():
-    """List available NDI sources"""
-    return source_manager.scan_ndi()
+@router.get("/ndi/sources")
+def get_ndi_sources():
+    """List available NDI sources."""
+    return preview_manager.scan_ndi_sources()
 
 @router.get("/cameras")
 def get_cameras():
@@ -34,13 +30,17 @@ def get_cameras():
     cams = camera_manager.config_manager.get_cameras()
     result = []
     for c in cams:
-        source = source_manager.get_source(c["id"])
+        provider = preview_manager.get_provider(c["id"])
         c_out = c.copy()
-        if source:
-             c_out["stream_url"] = source.get_stream_url()
+        if provider:
+             c_out["stream_url"] = provider.get_stream_url()
         else:
              c_out["stream_url"] = "" # Offline
-        del c_out["password"] # Security
+        
+        # Security: Remove password
+        if "password" in c_out:
+            del c_out["password"]
+            
         result.append(c_out)
     return result
 
@@ -48,13 +48,13 @@ def get_cameras():
 def add_camera(config: CameraConfig):
     new_cam = config.dict()
     camera_manager.add_camera(new_cam)
-    # Start source
-    source_manager.create_source(new_cam)
+    # Start preview provider
+    preview_manager.create_provider(new_cam)
     return {"status": "added", "id": new_cam["id"]}
 
 @router.delete("/cameras/{cam_id}")
 def delete_camera(cam_id: str):
-    source_manager.remove_source(cam_id)
+    preview_manager.remove_provider(cam_id)
     camera_manager.remove_camera(cam_id)
     return {"status": "removed"}
 
@@ -68,7 +68,6 @@ def ptz_control(cam_id: str, req: PTZRequest):
     if req.action == "move":
         success = provider.move(req.pan, req.tilt, req.zoom, req.speed)
     elif req.action == "zoom":
-         # treat as move with only zoom
          success = provider.move(0, 0, req.zoom, req.speed)
     elif req.action == "stop":
         success = provider.stop()
@@ -97,10 +96,7 @@ def goto_preset(cam_id: str, preset_id: str):
     return {"status": "ok"}
 
 @router.post("/cameras/{cam_id}/presets/{preset_id}/set")
-def set_preset(cam_id: str, preset_id: str): # preset_id here is actually name for set
-    # The API design in prompt said POST /api/cameras/{id}/presets/{preset_id}/set
-    # Usually we POST to collection to create, but let's follow requirement.
-    # If preset_id is the name we want to set:
+def set_preset(cam_id: str, preset_id: str):
     provider = camera_manager.get_camera(cam_id)
     if not provider:
          raise HTTPException(status_code=404, detail="Camera not found")

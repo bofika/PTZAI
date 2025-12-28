@@ -5,6 +5,11 @@ from pydantic import BaseModel
 
 CONFIG_FILE = "config.json"
 
+class PreviewConfig(BaseModel):
+    type: str = "rtsp" # ndi | rtsp
+    ndi_source: Optional[str] = None
+    rtsp_url: Optional[str] = None 
+
 class CameraConfig(BaseModel):
     id: str
     name: str
@@ -12,11 +17,9 @@ class CameraConfig(BaseModel):
     onvif_port: int
     username: str
     password: str
-    rtsp_url: Optional[str] = None # Optional now as NDI cameras might not have one
-    control_protocol: str = "onvif"  # onvif | visca
+    control_protocol: str = "onvif" # onvif | visca
     visca_port: Optional[int] = None
-    video_source_type: str = "rtsp" # rtsp | ndi
-    ndi_source_name: Optional[str] = None
+    preview: PreviewConfig = PreviewConfig()
 
 class ConfigManager:
     _instance = None
@@ -34,7 +37,20 @@ class ConfigManager:
         else:
             try:
                 with open(CONFIG_FILE, "r") as f:
-                    self.config = json.load(f)
+                    data = json.load(f)
+                    # Simple migration: ensure 'preview' exists
+                    for cam in data.get("cameras", []):
+                        if "preview" not in cam:
+                            # Migrate old flat fields
+                            src_type = cam.get("video_source_type", "rtsp")
+                            rtsp_url = cam.get("rtsp_url")
+                            ndi_src = cam.get("ndi_source_name")
+                            cam["preview"] = {
+                                "type": src_type,
+                                "rtsp_url": rtsp_url,
+                                "ndi_source": ndi_src
+                            }
+                    self.config = data
             except json.JSONDecodeError:
                 self.config = {"cameras": []}
 

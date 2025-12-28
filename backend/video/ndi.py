@@ -4,9 +4,9 @@ import threading
 import logging
 import numpy as np
 from typing import Optional, Generator
-from .source import VideoSource
+from .preview import PreviewProvider
 
-class NDISource(VideoSource):
+class NDIProvider(PreviewProvider):
     def __init__(self, source_name: str, id: str):
         self.source_name = source_name
         self.id = id

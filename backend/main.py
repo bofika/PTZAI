@@ -27,7 +27,7 @@ app.mount("/hls", StaticFiles(directory=HLS_DIR), name="hls")
 
 from .routers import cameras
 from .camera_manager import CameraManager
-from .video.manager import SourceManager
+from .video.preview_manager import PreviewManager
 from fastapi.responses import StreamingResponse
 
 # Include routers
@@ -36,30 +36,30 @@ app.include_router(cameras.router, prefix="/api")
 @app.on_event("startup")
 def startup_event():
     # Load cameras and start streams
-    cm = CameraManager() # Load config
-    sm = SourceManager()
+    cm = CameraManager() # Does config load
+    pm = PreviewManager()
     for cam in cm.config_manager.get_cameras():
-        sm.create_source(cam)
+        pm.create_provider(cam)
 
 @app.on_event("shutdown")
 def shutdown_event():
-    SourceManager().stop_all()
+    PreviewManager().stop_all()
 
 @app.get("/api/video/{cam_id}/mjpeg")
 def video_mjpeg(cam_id: str):
-    """Serve MJPEG stream for a camera (NDI)."""
-    sm = SourceManager()
-    source = sm.get_source(cam_id)
-    if not source or not hasattr(source, 'generate_mjpeg'):
+    """Serve MJPEG stream for a camera."""
+    pm = PreviewManager()
+    provider = pm.get_provider(cam_id)
+    if not provider or not hasattr(provider, 'generate_mjpeg'):
          return {"error": "Source not found or not MJPEG compatible"}, 404
     
-    return StreamingResponse(source.generate_mjpeg(), media_type="multipart/x-mixed-replace; boundary=frame")
+    return StreamingResponse(provider.generate_mjpeg(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 @app.get("/api/health")
 def health_check():
     return {"status": "ok", "service": "IntelliTrack-Local"}
 
-# Serve Frontend (Static) - Mount LAST to avoid shadowing API
+# Serve Frontend (Static) - Mount LAST
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 
 if __name__ == "__main__":
