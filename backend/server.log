@@ -1,15 +1,40 @@
 INFO:     Will watch for changes in these directories: ['/Users/ferencgergelyboth/Documents/Antigravity Projects/PTZAI']
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [54846] using StatReload
+INFO:     Started reloader process [65941] using StatReload
 /Users/ferencgergelyboth/Documents/Antigravity Projects/PTZAI/backend/venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
   warnings.warn(
-INFO:     Started server process [54901]
+INFO:     Started server process [65997]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:root:Started NDI Source: MEETING-ROOM (PTZ-1)
-INFO:     127.0.0.1:63666 - "GET /api/cameras HTTP/1.1" 200 OK
-INFO:     127.0.0.1:63666 - "GET /api/health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:63703 - "GET /api/cameras HTTP/1.1" 200 OK
-INFO:     127.0.0.1:63703 - "GET /api/health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:63734 - "GET /api/cameras HTTP/1.1" 200 OK
-INFO:     127.0.0.1:63734 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64763 - "GET /api/healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64781 - "GET /api/healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64795 - "GET /api/cameras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64795 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64811 - "GET /api/cameras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64811 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64827 - "GET /api/cameras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64827 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64852 - "GET /api/cameras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64852 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64868 - "GET /api/cameras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64868 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64884 - "GET /api/cameras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64884 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64907 - "GET /api/cameras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64907 - "GET /api/health HTTP/1.1" 200 OK
+Error connecting to ONVIF camera 192.168.1.100: Unknown error: HTTPConnectionPool(host='192.168.1.100', port=80): Max retries exceeded with url: /onvif/device_service (Caused by NewConnectionError("HTTPConnection(host='192.168.1.100', port=80): Failed to establish a new connection: [Errno 60] Operation timed out"))
+INFO:     127.0.0.1:64932 - "GET /api/cameras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64932 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64950 - "GET /api/cameras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64950 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64975 - "GET /api/cameras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64975 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64993 - "GET /api/cameras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64993 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65008 - "GET /api/cameras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65008 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65023 - "GET /api/cameras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65023 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65048 - "GET /api/cameras HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65048 - "GET /api/health HTTP/1.1" 200 OK

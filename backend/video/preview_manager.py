@@ -80,10 +80,15 @@ class PreviewManager:
             provider = None
             # ... creation logic ...
             try:
+                # Define callback for provider to report status/activity
+                def _status_cb(status=None, error=None, activity=False):
+                    self.update_state(cam_id, status=status, error=error, activity=activity)
+
                 if p_type == "ndi":
                     source_name = preview_cfg.get("ndi_source")
                     if source_name:
-                        provider = NDIProvider(source_name, cam_id)
+                        # Pass callback to NDI Provider
+                        provider = NDIProvider(source_name, cam_id, status_callback=_status_cb)
                 else:
                     url = preview_cfg.get("rtsp_url")
                     if url:
@@ -97,13 +102,17 @@ class PreviewManager:
                     def _start_bg():
                         try:
                             provider.start()
+                            # Initial OK is set by provider callback or here?
+                            # If provider calls callback on start, we don't need this.
+                            # But NDIProvider calls callback in loop.
+                            # Let's set OK here as fallback/initial.
                             self.update_state(cam_id, status="ok") 
                         except Exception as e:
                             print(f"Error starting provider {cam_id}: {e}")
                             self.update_state(cam_id, status="error", error=str(e))
                     
                     threading.Thread(target=_start_bg, daemon=True).start()
-
+                
             except Exception as e:
                 self.update_state(cam_id, status="error", error=str(e))
                 return None

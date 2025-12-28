@@ -114,41 +114,77 @@ function updateStatusIndicators() {
     });
 }
 
+// Helper for relative time
+function timeAgo(dateStr) {
+    if (!dateStr) return "Never";
+    const sec = Math.floor((new Date() - new Date(dateStr)) / 1000);
+    if (sec < 60) return `${sec}s ago`;
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m ago`;
+    return ">1h ago";
+}
+
 function updateModalStats(cam) {
     const statDiv = document.getElementById('modal-stats');
     if (!statDiv) return;
 
-    const lastSeen = cam.last_seen_ts ? new Date(cam.last_seen_ts).toLocaleTimeString() : "Never";
-    const lastErr = cam.last_error || "None";
+    const lastSeen = timeAgo(cam.preview_last_seen || cam.last_seen_ts);
+    const lastErr = cam.preview_last_error || "None";
+    const pStat = cam.preview_status || 'offline';
+    const cStat = cam.control_status || 'offline';
+
+    // Status Colors
+    const pColor = pStat === 'ok' ? '#10b981' : (pStat === 'error' ? '#ef4444' : '#eab308');
 
     statDiv.innerHTML = `
-        <div style="font-size:0.8rem; color:#9ca3af; margin-bottom:10px; padding:5px; background:#111; border-radius:4px;">
-            <div>Last Seen: ${lastSeen}</div>
-            <div>Last Error: <span style="color:${cam.last_error ? '#ef4444' : 'inherit'}">${lastErr}</span></div>
-            <div>Status: P:${cam.preview_status} / C:${cam.control_status}</div>
+        <div style="font-size:0.85rem; color:#d1d5db; margin-bottom:15px; padding:10px; background:#1f2937; border-radius:6px; border:1px solid #374151;">
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:5px; margin-bottom:5px;">
+                <div><strong>Preview:</strong> <span style="color:${pColor}">${pStat.toUpperCase()}</span></div>
+                <div><strong>Control:</strong> <span>${cStat.toUpperCase()}</span></div>
+            </div>
+            <div><strong>Last Seen:</strong> ${lastSeen}</div>
+            <div style="margin-top:2px;"><strong>Last Error:</strong> <span style="color:${lastErr !== 'None' ? '#ef4444' : '#9ca3af'}">${lastErr}</span></div>
         </div>
     `;
 
     // Enable/Disable Restart
     const resBtn = document.getElementById('restart-preview-btn');
     if (resBtn) {
-        if (cam.preview_status === 'starting' || cam.preview_status === 'restarting') {
+        if (pStat === 'starting' || pStat === 'restarting') {
             resBtn.disabled = true;
             resBtn.innerText = "Restarting...";
+            resBtn.style.opacity = '0.7';
         } else {
             resBtn.disabled = false;
             resBtn.innerText = "Restart Preview";
+            resBtn.style.opacity = '1';
         }
     }
 }
 
 async function restartPreview(camId) {
     if (!confirm("Restart video preview?")) return;
+    const btn = document.getElementById('restart-preview-btn');
+    if (btn) btn.innerText = "Sending...";
+
     try {
         await fetch(`${API_BASE}/cameras/${camId}/preview/restart`, { method: 'POST' });
+
+        // Find image and force refresh using timestamp
+        const img = document.querySelector(`.video-cell[data-id="${camId}"] .video-player`);
+        if (img && img.tagName === 'IMG') {
+            // Reset src to force reload
+            const src = img.src.split('?')[0];
+            img.src = src + '?t=' + Date.now();
+        }
+
         // Force poll
-        setTimeout(pollStatus, 500);
-    } catch (e) { console.error(e); alert("Restart failed"); }
+        setTimeout(pollStatus, 1000);
+        setTimeout(pollStatus, 3000); // Check again later
+    } catch (e) {
+        console.error(e);
+        alert("Restart failed");
+    }
 }
 
 // ... (openEditModal)
@@ -395,7 +431,8 @@ function renderGrid() {
             } else if (url.includes('mjpeg')) {
                 playerEl = document.createElement('img');
                 playerEl.className = 'video-player';
-                playerEl.src = url;
+                // Always append timestamp to prevent caching old streams
+                playerEl.src = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
                 playerEl.style.objectFit = 'contain';
                 playerEl.onerror = () => {
                     // Handle broken MJPEG

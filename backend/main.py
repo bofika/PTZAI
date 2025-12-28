@@ -63,7 +63,12 @@ def video_mjpeg(cam_id: str):
             pm.update_state(cam_id, activity=True)
             yield chunk
 
-    return StreamingResponse(frame_wrapper(), media_type="multipart/x-mixed-replace; boundary=frame")
+    headers = {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0"
+    }
+    return StreamingResponse(frame_wrapper(), media_type="multipart/x-mixed-replace; boundary=frame", headers=headers)
 
 @app.get("/api/healthz")
 def health_check_simple():
