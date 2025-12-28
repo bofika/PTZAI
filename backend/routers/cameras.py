@@ -75,15 +75,19 @@ def get_cameras():
         cam_id = c["id"]
         
         # 1. Preview Status
-        preview_status = preview_manager.check_health(cam_id)
+        p_state = preview_manager.get_state(cam_id)
+        preview_status = p_state.get("status", "offline")
+        p_last_seen = p_state.get("last_seen")
+        p_last_error = p_state.get("last_error")
+
         preview = preview_manager.get_provider(cam_id)
         stream_url = preview.get_stream_url() if preview else ""
         
         # 2. Control Status & Runtime State
-        state = camera_manager.get_state(cam_id)
-        control_status = state.get("control_status", "offline")
-        last_seen = state.get("last_seen")
-        last_error = state.get("last_error")
+        c_state = camera_manager.get_state(cam_id)
+        control_status = c_state.get("control_status", "offline")
+        c_last_seen = c_state.get("last_seen")
+        c_last_error = c_state.get("last_error")
 
         # 3. Capabilities
         # (Assuming capabilities are static for now, or cached in the provider)
@@ -117,8 +121,23 @@ def get_cameras():
             "stream_url": stream_url,
             "capabilities": caps,
             "active_preview_source": active_source,
-            "last_error": last_error,
-            "last_seen_ts": last_seen,
+            "last_error": c_last_error, # Keep legacy top-level for control error? 
+            # Or exposing both? User asked for "preview_status/last_error/last_seen_ts"
+            # Let's provide structured output if possible, but for MVP flattening is easier if distinct.
+            # "last_error" usually implied control error in previous tasks.
+            # Let's add specific fields.
+            "control_last_seen": c_last_seen,
+            "control_last_error": c_last_error,
+            "preview_last_seen": p_last_seen,
+            "preview_last_error": p_last_error,
+            # Backwards compat:
+            "last_seen_ts": c_last_seen, # default to control? or preview? 
+            # Request: "Update preview last_seen_ts ... Expose preview_status/last_error/last_seen_ts"
+            # It seems user wants visibility into PREVIEW last seen.
+            # Let's override `last_error` with `p_last_error` if preview status is error?
+            # Or just provide `preview_last_seen_ts`.
+            "preview_last_seen_ts": p_last_seen,
+            
             "preview_type": p_cfg.get("type", "rtsp")
         })
         
