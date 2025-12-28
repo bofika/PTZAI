@@ -20,17 +20,21 @@ async function init() {
     setInterval(pollStatus, 3000);
 
     // Logs Toggle
-    document.getElementById('logs-toggle-btn').onclick = () => {
-        const drawer = document.getElementById('logs-drawer');
-        drawer.classList.toggle('open');
-        if (drawer.classList.contains('open')) {
-            fetchLogs();
-            if (!logsInterval) logsInterval = setInterval(fetchLogs, 2000);
-        } else {
-            if (logsInterval) clearInterval(logsInterval);
-            logsInterval = null;
-        }
-    };
+    const logsBtn = document.getElementById('logs-toggle-btn');
+    if (logsBtn) {
+        logsBtn.onclick = () => {
+            const drawer = document.getElementById('logs-drawer');
+            if (!drawer) return;
+            drawer.classList.toggle('open');
+            if (drawer.classList.contains('open')) {
+                fetchLogs();
+                if (!logsInterval) logsInterval = setInterval(fetchLogs, 2000);
+            } else {
+                if (logsInterval) clearInterval(logsInterval);
+                logsInterval = null;
+            }
+        };
+    }
 }
 
 async function fetchLogs() {
