@@ -26,14 +26,15 @@ def get_ndi_sources():
 
 @router.get("/cameras")
 def get_cameras():
-    # Return list of video sources
+    # Return list of video sources + capabilities
     cams = camera_manager.config_manager.get_cameras()
     result = []
     for c in cams:
-        provider = preview_manager.get_provider(c["id"])
+        # Preview Provider
+        preview = preview_manager.get_provider(c["id"])
         c_out = c.copy()
-        if provider:
-             c_out["stream_url"] = provider.get_stream_url()
+        if preview:
+             c_out["stream_url"] = preview.get_stream_url()
         else:
              c_out["stream_url"] = "" # Offline
         
@@ -41,6 +42,13 @@ def get_cameras():
         if "password" in c_out:
             del c_out["password"]
             
+        # PTZ Capabilities
+        ptz_provider = camera_manager.get_camera(c["id"])
+        if ptz_provider and hasattr(ptz_provider, "get_capabilities"):
+            c_out["capabilities"] = ptz_provider.get_capabilities()
+        else:
+            c_out["capabilities"] = {}
+
         result.append(c_out)
     return result
 
@@ -57,6 +65,25 @@ def delete_camera(cam_id: str):
     preview_manager.remove_provider(cam_id)
     camera_manager.remove_camera(cam_id)
     return {"status": "removed"}
+
+@router.put("/cameras/{cam_id}")
+def update_camera(cam_id: str, config: CameraConfig):
+    # Update config
+    if config.id != cam_id:
+         raise HTTPException(status_code=400, detail="ID mismatch")
+    
+    # Check if exists
+    if not camera_manager.config_manager.get_camera(cam_id):
+         raise HTTPException(status_code=404, detail="Camera not found")
+
+    # Update storage
+    camera_manager.config_manager.update_camera(cam_id, config.dict())
+    
+    # Restart preview (Stop old, Start new)
+    preview_manager.remove_provider(cam_id)
+    preview_manager.create_provider(config.dict())
+    
+    return {"status": "updated", "id": cam_id}
 
 @router.post("/cameras/{cam_id}/ptz")
 def ptz_control(cam_id: str, req: PTZRequest):

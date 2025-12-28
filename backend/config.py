@@ -32,8 +32,17 @@ class ConfigManager:
 
     def load_config(self):
         if not os.path.exists(CONFIG_FILE):
-            self.config = {"cameras": []}
-            self.save_config()
+            # Try to load example if exists
+            example_file = "backend/config.example.json"
+            if os.path.exists(example_file):
+                 try:
+                    with open(example_file, "r") as f:
+                        self.config = json.load(f)
+                 except:
+                    self.config = {"cameras": []}
+            else:
+                self.config = {"cameras": []}
+            # Don't auto-save to avoid creating the file if user didn't intend
         else:
             try:
                 with open(CONFIG_FILE, "r") as f:
@@ -51,7 +60,8 @@ class ConfigManager:
                                 "ndi_source": ndi_src
                             }
                     self.config = data
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, OSError):
+                print("Error loading config.json, using empty default.")
                 self.config = {"cameras": []}
 
     def save_config(self):
@@ -64,6 +74,15 @@ class ConfigManager:
     def add_camera(self, camera: Dict[str, Any]):
         self.config["cameras"].append(camera)
         self.save_config()
+
+    def update_camera(self, camera_id: str, updates: Dict[str, Any]):
+        for i, cam in enumerate(self.config["cameras"]):
+            if cam["id"] == camera_id:
+                # Merge updates
+                self.config["cameras"][i].update(updates)
+                self.save_config()
+                return True
+        return False
 
     def remove_camera(self, camera_id: str):
         self.config["cameras"] = [c for c in self.config["cameras"] if c["id"] != camera_id]

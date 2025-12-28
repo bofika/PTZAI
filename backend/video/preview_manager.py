@@ -4,8 +4,11 @@ from .ndi import NDIProvider
 from .rtsp import RTSPProvider
 from .discovery import NDIDiscovery
 
+import threading
+
 class PreviewManager:
     _instance = None
+    _lock = threading.Lock()
     
     def __new__(cls):
         if cls._instance is None:
@@ -15,7 +18,8 @@ class PreviewManager:
         return cls._instance
 
     def get_provider(self, cam_id: str) -> Optional[PreviewProvider]:
-        return self.providers.get(cam_id)
+        with self._lock:
+            return self.providers.get(cam_id)
 
     def create_provider(self, config: Dict) -> Optional[PreviewProvider]:
         """
@@ -34,34 +38,57 @@ class PreviewManager:
         preview_cfg = config.get("preview", {})
         p_type = preview_cfg.get("type", "rtsp")
         
-        # Stop existing
-        if cam_id in self.providers:
-            self.providers[cam_id].stop()
+        with self._lock:
+            # Stop existing - CLEANUP
+            if cam_id in self.providers:
+                print(f"Stopping existing preview for {cam_id}")
+                try:
+                    self.providers[cam_id].stop()
+                except Exception as e:
+                    print(f"Error stopping provider {cam_id}: {e}")
+                del self.providers[cam_id]
 
-        provider = None
-        if p_type == "ndi":
-            source_name = preview_cfg.get("ndi_source")
-            if source_name:
-                provider = NDIProvider(source_name, cam_id)
-        else:
-            url = preview_cfg.get("rtsp_url")
-            if url:
-                provider = RTSPProvider(url, cam_id)
-        
-        if provider:
-            self.providers[cam_id] = provider
-            provider.start()
+            provider = None
+            print(f"Creating {p_type} provider for {cam_id}")
+            if p_type == "ndi":
+                source_name = preview_cfg.get("ndi_source")
+                if source_name:
+                    provider = NDIProvider(source_name, cam_id)
+            else:
+                url = preview_cfg.get("rtsp_url")
+                if url:
+                    provider = RTSPProvider(url, cam_id)
             
-        return provider
+            if provider:
+                self.providers[cam_id] = provider
+                # Start outside lock? No, keep it safe.
+                try:
+                    provider.start()
+                except Exception as e:
+                    print(f"Error starting provider {cam_id}: {e}")
+                    # Don't store broken provider
+                    return None
+            
+            return provider
 
     def remove_provider(self, cam_id: str):
-        if cam_id in self.providers:
-            self.providers[cam_id].stop()
-            del self.providers[cam_id]
+        with self._lock:
+            if cam_id in self.providers:
+                try:
+                    self.providers[cam_id].stop()
+                except Exception as e:
+                    print(f"Error stopping provider {cam_id}: {e}")
+                del self.providers[cam_id]
 
     def stop_all(self):
-        for p in self.providers.values():
-            p.stop()
+        with self._lock:
+            print("Stopping all preview providers...")
+            for pid, p in self.providers.items():
+                try:
+                    p.stop()
+                except Exception as e:
+                     print(f"Error stopping {pid}: {e}")
+            self.providers.clear()
 
     def scan_ndi_sources(self):
         return self.discovery.scan()

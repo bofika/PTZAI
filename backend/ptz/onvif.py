@@ -15,6 +15,15 @@ class OnvifProvider(PTZProvider):
         self.ptz = None
         self.media = None
         self.profile_token = None
+        self.capabilities = {
+            "continuous_move": True, # Assume true for connect
+            "absolute_move": False,
+            "relative_move": True,
+            "presets": True
+        }
+
+    def get_capabilities(self):
+        return self.capabilities
 
     def connect(self) -> bool:
         try:
