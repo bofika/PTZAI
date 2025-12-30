@@ -7,7 +7,7 @@ from typing import Optional, Generator
 from .preview import PreviewProvider
 
 class NDIProvider(PreviewProvider):
-    def __init__(self, source_name: str, id: str):
+    def __init__(self, source_name: str, id: str, status_callback=None):
         self.source_name = source_name
         self.id = id
         self.recv = None
@@ -15,6 +15,7 @@ class NDIProvider(PreviewProvider):
         self.thread = None
         self.latest_frame: Optional[np.ndarray] = None
         self.lock = threading.Lock()
+        self.status_callback = status_callback
 
     def start(self):
         if self.running:
@@ -24,11 +25,13 @@ class NDIProvider(PreviewProvider):
             import NDIlib as ndi
             if not ndi.initialize():
                 logging.error("Could not initialize NDIlib")
+                if self.status_callback: self.status_callback(status="error", error="NDI init failed")
                 return
 
             self.recv = ndi.recv_create_v3()
             if self.recv is None:
                 logging.error("Could not create NDI receiver")
+                if self.status_callback: self.status_callback(status="error", error="NDI recv create failed")
                 return
 
             self.running = True
@@ -45,11 +48,12 @@ class NDIProvider(PreviewProvider):
 
         except ImportError:
             logging.error("NDIlib not found")
+            if self.status_callback: self.status_callback(status="error", error="NDIlib not found")
 
     def stop(self):
         self.running = False
         if self.thread:
-            self.thread.join(timeout=1.0)
+            self.thread.join(timeout=2.0)
         
         if self.recv:
             import NDIlib as ndi
@@ -64,27 +68,48 @@ class NDIProvider(PreviewProvider):
                 if t == ndi.FRAME_TYPE_VIDEO:
                     # Convert to numpy
                     frame = np.copy(v.data)
-                    # NDI gives BGRA or UYVY usually, need to check pixel format. 
-                    # Assuming standard defaults (usually UYVY or BGRA)
-                    # For simplicity in Python wrapper, it often returns straight buffer.
-                    # This part is tricky without testing specific camera format.
-                    # If assume BGRA (common in ndi-python examples):
-                    frame = frame.reshape((v.yres, v.xres, 4))
+                    frame_ok = False
                     
-                    # Store latest
-                    with self.lock:
-                        # Convert to BGR for OpenCV standard usage and smaller MJPEG
-                        self.latest_frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-                    
+                    try:
+                        expected_rgba = v.xres * v.yres * 4
+                        expected_uyvy = v.xres * v.yres * 2
+                        
+                        processed_frame = None
+                        
+                        if frame.size == expected_uyvy:
+                            # UYVY (16bpp)
+                            frame = frame.reshape((v.yres, v.xres, 2))
+                            processed_frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR_UYVY)
+                        elif frame.size == expected_rgba:
+                            # BGRA (32bpp)
+                            frame = frame.reshape((v.yres, v.xres, 4))
+                            processed_frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+                        else:
+                            logging.warning(f"NDI: Unknown frame size {frame.size} for {v.xres}x{v.yres}")
+                            
+                        if processed_frame is not None:
+                            with self.lock:
+                                self.latest_frame = processed_frame
+                            frame_ok = True
+                            
+                    except Exception as e:
+                        logging.error(f"NDI Decode Error: {e}")
+                        if self.status_callback: self.status_callback(status="error", error=f"Decode: {e}")
+
                     ndi.recv_free_video_v2(self.recv, v)
+                    
+                    if frame_ok and self.status_callback:
+                        self.status_callback(status="ok", activity=True)
+                        
                 elif t == ndi.FRAME_TYPE_AUDIO:
                     ndi.recv_free_audio_v2(self.recv, a)
                 elif t == ndi.FRAME_TYPE_METADATA:
                     ndi.recv_free_metadata(self.recv, m)
-                elif t == ndi.FRAME_TYPE_STATUS_CHANGE:
+                else:
                     pass
             except Exception as e:
                 logging.error(f"NDI Capture Error: {e}")
+                if self.status_callback: self.status_callback(status="error", error=f"Capture: {e}")
                 time.sleep(1)
 
     def get_frame(self) -> Optional[np.ndarray]:
@@ -113,6 +138,4 @@ class NDIProvider(PreviewProvider):
                     yield (b'--frame\r\n'
                            b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
             
-            # Cap FPS to avoid saturating network/CPU? 
-            # Or just sleep tiny amount. 30fps = ~0.033
             time.sleep(0.033)

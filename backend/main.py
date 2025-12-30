@@ -25,6 +25,7 @@ FRONTEND_DIR = os.path.join(BASE_DIR, "../frontend")
 os.makedirs(HLS_DIR, exist_ok=True)
 app.mount("/hls", StaticFiles(directory=HLS_DIR), name="hls")
 
+from .logger import logger
 from .routers import cameras
 from .camera_manager import CameraManager
 from .video.preview_manager import PreviewManager
@@ -35,11 +36,9 @@ app.include_router(cameras.router, prefix="/api")
 
 @app.on_event("startup")
 def startup_event():
-    # Load cameras and start streams
-    cm = CameraManager() # Does config load
-    pm = PreviewManager()
-    for cam in cm.config_manager.get_cameras():
-        pm.create_provider(cam)
+    # Lazy load: Don't start streams here.
+    logger.log("INFO", "Backend started (Lazy Preview Loading enabled)", "system", "startup")
+    pass
 
 @app.on_event("shutdown")
 def shutdown_event():
@@ -48,15 +47,51 @@ def shutdown_event():
 @app.get("/api/video/{cam_id}/mjpeg")
 def video_mjpeg(cam_id: str):
     """Serve MJPEG stream for a camera."""
+    # Diagnostic
+    if "<" in cam_id or "%3C" in cam_id:
+        return {"error": "Invalid Camera ID"}, 400
+
     pm = PreviewManager()
+    
+    # Lazy Load Logic
     provider = pm.get_provider(cam_id)
+    if not provider:
+        # Try to find config and start it
+        cm = CameraManager()
+        conf = cm.config_manager.get_camera(cam_id)
+        if conf:
+            # Create (or get existing if race condition handled by PM guards)
+            print(f"Lazy loading preview for {cam_id}")
+            provider = pm.create_provider(conf)
+        else:
+            return {"error": "Camera config not found"}, 404
+
     if not provider or not hasattr(provider, 'generate_mjpeg'):
          return {"error": "Source not found or not MJPEG compatible"}, 404
     
-    return StreamingResponse(provider.generate_mjpeg(), media_type="multipart/x-mixed-replace; boundary=frame")
+    def frame_wrapper():
+        # Pass through frames and update activity
+        for chunk in provider.generate_mjpeg():
+            # Update state (activity=True)
+            pm.update_state(cam_id, activity=True)
+            yield chunk
 
-@app.get("/api/health")
-def health_check():
+    headers = {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0"
+    }
+    return StreamingResponse(frame_wrapper(), media_type="multipart/x-mixed-replace; boundary=frame", headers=headers)
+
+@app.post("/api/admin/sanitize-config")
+def admin_sanitize_config():
+    """Force clean config.json (remove invalid IDs)."""
+    cm = CameraManager()
+    count = cm.config_manager.sanitize_persistence()
+    return {"status": "ok", "active_cameras": count, "message": "Config sanitized"}
+
+@app.get("/api/healthz")
+def health_check_simple():
     return {"status": "ok", "service": "IntelliTrack-Local"}
 
 # Serve Frontend (Static) - Mount LAST

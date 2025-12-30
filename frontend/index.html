@@ -11,7 +11,10 @@
 <body>
     <header>
         <h1>IntelliTrack-Local (MVP)</h1>
-        <button id="add-camera-btn" class="primary">Add Camera</button>
+        <div style="display: flex; gap: 10px;">
+            <button id="add-camera-btn" class="primary">Add Camera</button>
+            <button id="logs-toggle-btn">Logs</button>
+        </div>
     </header>
 
     <div class="layout-container">
@@ -19,6 +22,17 @@
             <div id="video-grid">
                 <!-- Video Cells injected here -->
                 <div class="empty-state">No Cameras Configured</div>
+            </div>
+
+            <div id="logs-drawer">
+                <div class="logs-header">
+                    <span>System Logs</span>
+                    <button onclick="document.getElementById('logs-drawer').classList.remove('open')"
+                        style="font-size:0.8rem; padding:2px 6px;">✕</button>
+                </div>
+                <div class="logs-content" id="logs-list">
+                    <!-- Logs go here -->
+                </div>
             </div>
         </main>
 
@@ -84,7 +98,27 @@
                         required></div>
                 <div class="form-group"><input type="text" name="username" placeholder="Username" required></div>
                 <div class="form-group"><input type="password" name="password" placeholder="Password" required></div>
-                <div class="form-group"><input type="text" name="rtsp_url" placeholder="RTSP URL (rtsp://...)" required>
+                <div class="form-group">
+                    <label style="color:#e5e7eb; display:block; margin-bottom:5px;">Source Type</label>
+                    <select name="video_source_type" id="source-type-select"
+                        style="width:100%; padding:8px; margin-bottom:10px;">
+                        <option value="rtsp">RTSP</option>
+                        <option value="ndi">NDI</option>
+                    </select>
+                </div>
+
+                <div id="rtsp-fields">
+                    <div class="form-group"><input type="text" name="rtsp_url" id="rtsp_url_input"
+                            placeholder="RTSP URL (rtsp://...)" style="width:100%;"></div>
+                </div>
+
+                <div id="ndi-fields" style="display:none;">
+                    <div class="form-group" style="display:flex; gap:10px;">
+                        <select name="ndi_source_name" id="ndi-source-select" style="flex:1; padding:8px;">
+                            <option value="">Select NDI Source...</option>
+                        </select>
+                        <button type="button" id="scan-ndi-btn" style="padding:0 10px;">Scan</button>
+                    </div>
                 </div>
                 <div class="form-group"><input type="hidden" name="id" value=""></div>
 

@@ -1,9 +1,8 @@
-from onvif import ONVIFCamera
-from .provider import PTZProvider
+import time
+from datetime import datetime, timedelta
 from typing import List, Dict, Any
-import os
-
-# Suppress zeep huge logs if needed, or in main.
+from .provider import PTZProvider
+from onvif import ONVIFCamera
 
 class OnvifProvider(PTZProvider):
     def __init__(self, ip, port, username, password):
@@ -15,17 +14,29 @@ class OnvifProvider(PTZProvider):
         self.ptz = None
         self.media = None
         self.profile_token = None
+        self.capabilities = {
+            "continuous_move": True, 
+            "absolute_move": False,
+            "relative_move": True,
+            "presets": True
+        }
+        
+        # Debounce / Cache
+        self.last_move = 0
+        self.move_debounce_interval = 0.1 # 100ms
+        self.presets_cache = []
+        self.presets_cache_ts = 0
+        self.presets_ttl = 30 # seconds
+
+    def get_capabilities(self):
+        return self.capabilities
 
     def connect(self) -> bool:
         try:
-            # We assume wsdl is available or standard path. 
-            # Ideally we point to a local wsdl folder if we have it, but generic connect usually works if camera supports it.
-            # However, onvif-zeep often requires a wsdl path if not default. 
-            # We'll try default first.
+            # ... (existing connect logic)
             self.camera = ONVIFCamera(
                 self.ip, self.port, self.username, self.password
             )
-            
             # Create services
             self.media = self.camera.create_media_service()
             self.ptz = self.camera.create_ptz_service()
@@ -36,7 +47,6 @@ class OnvifProvider(PTZProvider):
                 print(f"No profiles found for {self.ip}")
                 return False
             
-            # Just take the first profile for now (MVP)
             self.profile_token = profiles[0].token
             return True
         except Exception as e:
@@ -47,12 +57,15 @@ class OnvifProvider(PTZProvider):
         if not self.ptz or not self.profile_token:
             return False
             
+        # Debounce
+        now = time.time()
+        if (now - self.last_move) < self.move_debounce_interval:
+            # Skip rapid moves
+            return True 
+        self.last_move = now
+
         try:
             status = self.ptz.GetStatus({'ProfileToken': self.profile_token})
-            
-            # Construct move request
-            # Note: Speed scaling depends on the camera capabilities. 
-            # Typically 0.0-1.0 is standard for ContinuousMove.
             
             request = self.ptz.create_type('ContinuousMove')
             request.ProfileToken = self.profile_token
@@ -65,7 +78,7 @@ class OnvifProvider(PTZProvider):
                 request.Velocity.PanTilt = self.ptz.create_type('Vector2D')
                 request.Velocity.PanTilt.x = pan * speed
                 request.Velocity.PanTilt.y = tilt * speed
-                request.Velocity.PanTilt.space = 'http://www.onvif.org/ver10/tptz/PanTiltSpaces/VelocityGenericSpace' # standard
+                request.Velocity.PanTilt.space = 'http://www.onvif.org/ver10/tptz/PanTiltSpaces/VelocityGenericSpace'
             
             # Zoom
             if zoom != 0:
@@ -82,6 +95,7 @@ class OnvifProvider(PTZProvider):
     def stop(self) -> bool:
         if not self.ptz or not self.profile_token:
             return False
+        # STOP always bypasses debounce
         try:
             self.ptz.Stop({'ProfileToken': self.profile_token, 'PanTilt': True, 'Zoom': True})
             return True
@@ -92,12 +106,24 @@ class OnvifProvider(PTZProvider):
     def get_presets(self) -> List[Dict[str, Any]]:
         if not self.ptz or not self.profile_token:
             return []
+            
+        # Check cache
+        now = time.time()
+        if self.presets_cache and (now - self.presets_cache_ts) < self.presets_ttl:
+            return self.presets_cache
+
         try:
             presets = self.ptz.GetPresets({'ProfileToken': self.profile_token})
-            return [{'id': p.token, 'name': p.Name} for p in presets]
+            self.presets_cache = [{'id': p.token, 'name': p.Name} for p in presets]
+            self.presets_cache_ts = now
+            return self.presets_cache
         except Exception as e:
             print(f"GetPresets error {self.ip}: {e}")
             return []
+
+    def force_refresh_presets(self):
+        self.presets_cache = []
+        return self.get_presets()
 
     def goto_preset(self, preset_token: str) -> bool:
         if not self.ptz or not self.profile_token:

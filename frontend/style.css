@@ -36,7 +36,11 @@ header {
     align-items: center;
 }
 
-h1 { font-size: 1.25rem; font-weight: bold; color: var(--accent); }
+h1 {
+    font-size: 1.25rem;
+    font-weight: bold;
+    color: var(--accent);
+}
 
 button {
     cursor: pointer;
@@ -48,8 +52,14 @@ button {
     transition: background-color 0.2s;
 }
 
-button.primary { background-color: var(--accent); color: white; }
-button.primary:hover { background-color: var(--accent-hover); }
+button.primary {
+    background-color: var(--accent);
+    color: white;
+}
+
+button.primary:hover {
+    background-color: var(--accent-hover);
+}
 
 /* Main Layout */
 .layout-container {
@@ -89,6 +99,46 @@ main {
     border: 2px solid var(--selected-border);
 }
 
+.video-cell.empty-slot {
+    background: #111;
+    border: 1px dashed #444;
+}
+
+.video-cell.empty-slot:hover {
+    background: #1a1a1a;
+}
+
+.status-indicator {
+    height: 100%;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    color: #fff;
+    font-size: 1.2rem;
+}
+
+.status-indicator.offline {
+    color: #9ca3af;
+}
+
+.status-indicator.error {
+    color: #ef4444;
+}
+
+.cam-header button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    margin-left: 5px;
+    font-size: 1rem;
+}
+
+.cam-header button:hover {
+    opacity: 0.8;
+}
+
 .video-player {
     width: 100%;
     height: 100%;
@@ -99,7 +149,7 @@ main {
     position: absolute;
     bottom: 0.5rem;
     left: 0.5rem;
-    background: rgba(0,0,0,0.6);
+    background: rgba(0, 0, 0, 0.6);
     padding: 0.25rem 0.5rem;
     border-radius: 0.25rem;
     font-size: 0.875rem;
@@ -107,12 +157,8 @@ main {
 }
 
 .empty-state {
-    grid-column: span 2;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    color: var(--text-muted);
-    font-size: 1.5rem;
+    display: none;
+    /* using empty slots now */
 }
 
 /* Sidebar */
@@ -125,7 +171,10 @@ aside {
     flex-direction: column;
 }
 
-h2 { margin-bottom: 1rem; font-size: 1.1rem; }
+h2 {
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+}
 
 #ptz-controls {
     transition: opacity 0.3s;
@@ -147,22 +196,54 @@ h2 { margin-bottom: 1rem; font-size: 1.1rem; }
     align-items: center;
     justify-content: center;
 }
-.ptz-btn:hover { background-color: #4b5563; }
-.ptz-btn.stop { background-color: var(--danger); }
-.ptz-btn.stop:hover { background-color: #dc2626; }
 
-section { margin-bottom: 1.5rem; }
-label { display: block; color: var(--text-muted); font-size: 0.875rem; margin-bottom: 0.5rem; }
+.ptz-btn:hover {
+    background-color: #4b5563;
+}
+
+.ptz-btn.stop {
+    background-color: var(--danger);
+}
+
+.ptz-btn.stop:hover {
+    background-color: #dc2626;
+}
+
+section {
+    margin-bottom: 1.5rem;
+}
+
+label {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    margin-bottom: 0.5rem;
+}
 
 input[type="range"] {
     width: 100%;
 }
 
-.zoom-controls { display: flex; gap: 0.5rem; }
-.zoom-controls button { flex: 1; background: #374151; }
-.zoom-controls button:hover { background: #4b5563; }
+.zoom-controls {
+    display: flex;
+    gap: 0.5rem;
+}
 
-.preset-controls { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+.zoom-controls button {
+    flex: 1;
+    background: #374151;
+}
+
+.zoom-controls button:hover {
+    background: #4b5563;
+}
+
+.preset-controls {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
 select {
     width: 100%;
     background: #374151;
@@ -172,18 +253,25 @@ select {
     border-radius: 0.25rem;
 }
 
-#status-text { color: var(--text-muted); font-size: 0.875rem; }
+#status-text {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
 
 /* Modal */
 .modal-overlay {
     position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.7);
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
     display: flex;
     justify-content: center;
     align-items: center;
     z-index: 50;
-    display: none; /* hidden by default */
+    display: none;
+    /* hidden by default */
 }
 
 .modal {
@@ -191,10 +279,13 @@ select {
     padding: 1.5rem;
     border-radius: 0.5rem;
     width: 400px;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
 }
 
-.form-group { margin-bottom: 1rem; }
+.form-group {
+    margin-bottom: 1rem;
+}
+
 .form-group input {
     width: 100%;
     padding: 0.5rem;
@@ -204,4 +295,69 @@ select {
     color: white;
 }
 
-.modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+/* Status Badges */
+.status-badges {
+    pointer-events: none;
+}
+
+/* Logs Drawer */
+#logs-drawer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 200px;
+    background: #1f2937;
+    border-top: 1px solid #374151;
+    z-index: 40;
+    display: none;
+    flex-direction: column;
+}
+
+#logs-drawer.open {
+    display: flex;
+}
+
+.logs-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 1rem;
+    background: #111827;
+    border-bottom: 1px solid #374151;
+}
+
+.logs-content {
+    flex: 1;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 0.85rem;
+    padding: 0.5rem;
+}
+
+.log-entry {
+    margin-bottom: 2px;
+    color: #d1d5db;
+}
+
+.log-entry.error {
+    color: #ef4444;
+}
+
+.log-entry.warn {
+    color: #f59e0b;
+}
+
+.log-entry.info {
+    color: #3b82f6;
+}
+
+.log-ts {
+    color: #6b7280;
+    margin-right: 8px;
+}

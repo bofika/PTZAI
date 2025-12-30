@@ -1,0 +1,18 @@
+{
+    "cameras": [
+        {
+            "id": "example_cam_1",
+            "name": "Meeting Room PTZ",
+            "ip": "192.168.1.100",
+            "onvif_port": 80,
+            "username": "admin",
+            "password": "password",
+            "control_protocol": "onvif",
+            "preview": {
+                "type": "ndi",
+                "ndi_source": "MEETING-ROOM (PTZ-1)",
+                "rtsp_url": "rtsp://192.168.1.100/live/main"
+            }
+        }
+    ]
+}
