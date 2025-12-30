@@ -373,6 +373,21 @@ function renderGrid() {
 
         if (cam) {
             cell.dataset.id = cam.id;
+
+            // GUARD: Invalid ID
+            if (cam.id.includes('<') || cam.id.includes('>') || cam.id.includes('%3C')) {
+                cell.className += ' error-slot';
+                cell.innerHTML = `
+                    <div style="color:#ef4444; font-weight:bold; text-align:center;">
+                        ⚠️ INVALID CONFIG<br>
+                        <span style="font-size:0.7em; color:#9ca3af;">${cam.id}</span>
+                    </div>
+                `;
+                console.warn("Skipping render for invalid camera ID:", cam.id);
+                VIDEO_GRID.appendChild(cell);
+                return;
+            }
+
             cell.onclick = (e) => {
                 if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
                 selectCamera(cam);

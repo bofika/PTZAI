@@ -37,32 +37,52 @@ class ConfigManager:
             if os.path.exists(example_file):
                  try:
                     with open(example_file, "r") as f:
-                        self.config = json.load(f)
+                        data = json.load(f)
+                        self.config = self._validate_and_filter(data)
                  except:
                     self.config = {"cameras": []}
             else:
                 self.config = {"cameras": []}
-            # Don't auto-save to avoid creating the file if user didn't intend
         else:
             try:
                 with open(CONFIG_FILE, "r") as f:
                     data = json.load(f)
-                    # Simple migration: ensure 'preview' exists
-                    for cam in data.get("cameras", []):
-                        if "preview" not in cam:
-                            # Migrate old flat fields
-                            src_type = cam.get("video_source_type", "rtsp")
-                            rtsp_url = cam.get("rtsp_url")
-                            ndi_src = cam.get("ndi_source_name")
-                            cam["preview"] = {
-                                "type": src_type,
-                                "rtsp_url": rtsp_url,
-                                "ndi_source": ndi_src
-                            }
-                    self.config = data
+                    self.config = self._validate_and_filter(data)
             except (json.JSONDecodeError, OSError):
                 print("Error loading config.json, using empty default.")
                 self.config = {"cameras": []}
+
+    def _validate_and_filter(self, data: Dict) -> Dict:
+        """Filter out cameras with invalid IDs."""
+        valid_cams = []
+        for cam in data.get("cameras", []):
+            cid = cam.get("id", "")
+            # Check for invalid chars or placeholders
+            if not cid or "<" in cid or ">" in cid or "%3C" in cid or "%3E" in cid or cid == "<cam_id>":
+                print(f"WARNING: Skipping invalid camera ID from config: {cid}")
+                continue
+            
+            # Migration logic (keep existing)
+            if "preview" not in cam:
+                src_type = cam.get("video_source_type", "rtsp")
+                rtsp_url = cam.get("rtsp_url")
+                ndi_src = cam.get("ndi_source_name")
+                cam["preview"] = {
+                    "type": src_type,
+                    "rtsp_url": rtsp_url,
+                    "ndi_source": ndi_src
+                }
+            
+            valid_cams.append(cam)
+        
+        data["cameras"] = valid_cams
+        return data
+
+    def sanitize_persistence(self):
+        """Force clean config.json by saving the currently loaded (filtered) config."""
+        print("Sanitizing persistence layer...")
+        self.save_config()
+        return len(self.config.get("cameras", []))
 
     def save_config(self):
         with open(CONFIG_FILE, "w") as f:

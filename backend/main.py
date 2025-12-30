@@ -83,6 +83,13 @@ def video_mjpeg(cam_id: str):
     }
     return StreamingResponse(frame_wrapper(), media_type="multipart/x-mixed-replace; boundary=frame", headers=headers)
 
+@app.post("/api/admin/sanitize-config")
+def admin_sanitize_config():
+    """Force clean config.json (remove invalid IDs)."""
+    cm = CameraManager()
+    count = cm.config_manager.sanitize_persistence()
+    return {"status": "ok", "active_cameras": count, "message": "Config sanitized"}
+
 @app.get("/api/healthz")
 def health_check_simple():
     return {"status": "ok", "service": "IntelliTrack-Local"}
