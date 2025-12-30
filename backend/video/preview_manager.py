@@ -65,59 +65,59 @@ class PreviewManager:
         preview_cfg = config.get("preview", {})
         p_type = preview_cfg.get("type", "rtsp")
         
+        # Guard: If running, don't duplicate
+        with self._lock:
+            if cam_id in self.providers:
+                p = self.providers[cam_id]
+                if p.is_running():
+                    # print(f"Preview already running for {cam_id}") # verbose
+                    return p
+                else:
+                    # Cleanup dead provider
+                    try: p.stop()
+                    except: pass
+                    del self.providers[cam_id]
+
         self.update_state(cam_id, status="starting")
         
-        with self._lock:
-            # Stop existing - CLEANUP
-            if cam_id in self.providers:
-                # ... existing logic ...
-                # Simplified for patch: just call internal logic or replicate
-                try:
-                    self.providers[cam_id].stop()
-                except Exception: pass
-                del self.providers[cam_id]
+        provider = None
+        try:
+            # Define callback for provider to report status/activity
+            def _status_cb(status=None, error=None, activity=False):
+                self.update_state(cam_id, status=status, error=error, activity=activity)
 
-            provider = None
-            # ... creation logic ...
-            try:
-                # Define callback for provider to report status/activity
-                def _status_cb(status=None, error=None, activity=False):
-                    self.update_state(cam_id, status=status, error=error, activity=activity)
-
-                if p_type == "ndi":
-                    source_name = preview_cfg.get("ndi_source")
-                    if source_name:
-                        # Pass callback to NDI Provider
-                        provider = NDIProvider(source_name, cam_id, status_callback=_status_cb)
-                else:
-                    url = preview_cfg.get("rtsp_url")
-                    if url:
-                        provider = RTSPProvider(url, cam_id)
+            if p_type == "ndi":
+                source_name = preview_cfg.get("ndi_source")
+                if source_name:
+                    # Pass callback to NDI Provider
+                    provider = NDIProvider(source_name, cam_id, status_callback=_status_cb)
+            else:
+                url = preview_cfg.get("rtsp_url")
+                if url:
+                    provider = RTSPProvider(url, cam_id)
+            
+            if provider:
+                with self._lock:
+                   self.providers[cam_id] = provider
                 
-                if provider:
-                    self.providers[cam_id] = provider
-                    
-                    # Start in background to avoid blocking startup
-                    import threading
-                    def _start_bg():
-                        try:
-                            provider.start()
-                            # Initial OK is set by provider callback or here?
-                            # If provider calls callback on start, we don't need this.
-                            # But NDIProvider calls callback in loop.
-                            # Let's set OK here as fallback/initial.
-                            self.update_state(cam_id, status="ok") 
-                        except Exception as e:
-                            print(f"Error starting provider {cam_id}: {e}")
-                            self.update_state(cam_id, status="error", error=str(e))
-                    
-                    threading.Thread(target=_start_bg, daemon=True).start()
+                # Start in background to avoid blocking startup
+                import threading
+                def _start_bg():
+                    try:
+                        print(f"Starting Preview Provider: {cam_id} ({p_type})")
+                        provider.start()
+                        self.update_state(cam_id, status="ok") 
+                    except Exception as e:
+                        print(f"Error starting provider {cam_id}: {e}")
+                        self.update_state(cam_id, status="error", error=str(e))
                 
-            except Exception as e:
-                self.update_state(cam_id, status="error", error=str(e))
-                return None
+                threading.Thread(target=_start_bg, daemon=True).start()
             
             return provider
+            
+        except Exception as e:
+            self.update_state(cam_id, status="error", error=str(e))
+            return None
 
     def check_health(self, cam_id: str) -> str:
         """Returns: ok | error | offline | starting | restarting"""
